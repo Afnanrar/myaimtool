@@ -31,6 +31,7 @@ export default function InboxPage() {
   const [error, setError] = useState('')
 
   useEffect(() => {
+    console.log('Inbox page mounted, loading pages...')
     loadPages()
   }, [])
 
@@ -41,17 +42,32 @@ export default function InboxPage() {
   }, [selectedPage])
 
   const loadPages = async () => {
-    if (!supabase) return
+    console.log('Loading pages in inbox...')
+    if (!supabase) {
+      console.log('Supabase client is null')
+      return
+    }
     
     try {
-      const { data } = await supabase
+      console.log('Fetching pages from database...')
+      const { data, error } = await supabase
         .from('pages')
         .select('*')
         .order('created_at', { ascending: false })
       
+      if (error) {
+        console.error('Database error:', error)
+        return
+      }
+      
+      console.log('Pages loaded from database:', data)
+      
       if (data && data.length > 0) {
         setPages(data)
         setSelectedPage(data[0]) // Auto-select first page
+        console.log('First page selected:', data[0])
+      } else {
+        console.log('No pages found in database')
       }
     } catch (error) {
       console.error('Error loading pages:', error)
@@ -134,6 +150,11 @@ export default function InboxPage() {
               <ChevronDown className={`h-5 w-5 text-gray-400 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
             </button>
             
+            {/* Debug Info */}
+            <div className="mt-2 text-xs text-gray-500">
+              Pages loaded: {pages.length} | Selected: {selectedPage?.name || 'None'}
+            </div>
+            
             {dropdownOpen && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setDropdownOpen(false)} />
@@ -179,6 +200,13 @@ export default function InboxPage() {
               title="Refresh conversations"
             >
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+            <button
+              onClick={loadPages}
+              className="p-2 border rounded-lg hover:bg-gray-50"
+              title="Refresh pages"
+            >
+              <RefreshCw className="h-4 w-4" />
             </button>
           </div>
         </div>
