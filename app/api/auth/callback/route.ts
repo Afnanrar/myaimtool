@@ -113,7 +113,6 @@ export async function GET(req: NextRequest) {
     })
     
     console.log('Cookie set, redirecting to dashboard...')
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
     return NextResponse.redirect(`${baseUrl}/dashboard`)
   } catch (error) {
     console.error('Auth error:', error)
