@@ -77,7 +77,7 @@ export default function InboxPage() {
     }
   }, [supabase, selectedPage, conversations])
 
-  // Real-time message polling for active conversation (backup to webhooks)
+  // Real-time message polling for active conversation
   useEffect(() => {
     if (!selectedPage || !selectedConversation) return
 
@@ -86,10 +86,10 @@ export default function InboxPage() {
       clearInterval(realtimeInterval)
     }
 
-    // Set up real-time polling as backup to webhooks
+    // Set up real-time polling for the active conversation
     const interval = setInterval(async () => {
       try {
-        // Only sync if webhooks might not be working (reduced frequency)
+        // Always sync new messages from Facebook
         const syncResponse = await fetch(`/api/facebook/messages/sync?conversationId=${selectedConversation.id}&pageId=${selectedPage.id}`)
         const syncData = await syncResponse.json()
         
@@ -104,10 +104,10 @@ export default function InboxPage() {
             const newMessages = messagesData.messages.filter((m: any) => !currentMessageIds.has(m.id))
             
             if (newMessages.length > 0) {
-              console.log('Backup sync: Found new messages:', newMessages.length)
+              console.log('New incoming messages found:', newMessages.length)
             }
             
-            // Update messages if there are new ones
+            // Always update messages to ensure latest state
             if (newMessages.length > 0) {
               setMessages(messagesData.messages)
               
@@ -127,9 +127,9 @@ export default function InboxPage() {
           }
         }
       } catch (error) {
-        console.error('Error in backup polling:', error)
+        console.error('Error in real-time polling:', error)
       }
-    }, 15000) // Check every 15 seconds as backup (reduced from 3 seconds)
+    }, 5000) // Check every 5 seconds for active conversation
 
     setRealtimeInterval(interval)
 
@@ -140,40 +140,32 @@ export default function InboxPage() {
     }
   }, [selectedPage, selectedConversation])
 
-  // Background sync for all conversations (backup to webhooks)
+  // Background sync for all conversations
   useEffect(() => {
     if (!selectedPage || conversations.length === 0) return
 
     const interval = setInterval(async () => {
       try {
-        console.log('Background sync: Checking all conversations (webhook backup)...')
+        console.log('Background sync: Checking all conversations for new messages...')
         
-        // Only sync conversations that haven't been updated recently
-        const now = Date.now()
-        const staleThreshold = 5 * 60 * 1000 // 5 minutes
-        
+        // Sync each conversation for new messages
         for (const conversation of conversations) {
-          const lastUpdate = new Date(conversation.last_message_time || 0).getTime()
-          const isStale = (now - lastUpdate) > staleThreshold
-          
-          if (isStale) {
-            try {
-              const syncResponse = await fetch(`/api/facebook/messages/sync?conversationId=${conversation.id}&pageId=${selectedPage.id}`)
-              const syncData = await syncResponse.json()
+          try {
+            const syncResponse = await fetch(`/api/facebook/messages/sync?conversationId=${conversation.id}&pageId=${selectedPage.id}`)
+            const syncData = await syncResponse.json()
+            
+            if (syncResponse.ok && syncData.newMessages && syncData.newMessages.length > 0) {
+              console.log(`Background sync: Found ${syncData.newMessages.length} new messages in conversation ${conversation.id}`)
               
-              if (syncResponse.ok && syncData.newMessages && syncData.newMessages.length > 0) {
-                console.log(`Background sync: Found ${syncData.newMessages.length} new messages in stale conversation ${conversation.id}`)
-                
-                // Update conversation list to show new message indicator
-                setConversations(prev => prev.map(conv => 
-                  conv.id === conversation.id 
-                    ? { ...conv, last_message_time: new Date().toISOString() }
-                    : conv
-                ))
-              }
-            } catch (error) {
-              console.error(`Error syncing conversation ${conversation.id}:`, error)
+              // Update conversation list to show new message indicator
+              setConversations(prev => prev.map(conv => 
+                conv.id === conversation.id 
+                  ? { ...conv, last_message_time: new Date().toISOString() }
+                  : conv
+              ))
             }
+          } catch (error) {
+            console.error(`Error syncing conversation ${conversation.id}:`, error)
           }
         }
         
@@ -183,7 +175,7 @@ export default function InboxPage() {
       } catch (error) {
         console.error('Error in background sync:', error)
       }
-    }, 30000) // Check every 30 seconds as backup (reduced from 10 seconds)
+    }, 10000) // Check every 10 seconds
 
     return () => clearInterval(interval)
   }, [selectedPage, conversations])
@@ -760,8 +752,8 @@ export default function InboxPage() {
             <span>Pages loaded: {pages.length} | Selected: {selectedPage ? 'Yes' : 'No'}</span>
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1">
-                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                <span>Webhook + Backup</span>
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                <span>Auto-Sync</span>
               </div>
               {lastRefreshed && (
                 <span className="flex items-center">
@@ -884,25 +876,7 @@ export default function InboxPage() {
 
       {/* Message Thread - Right side remains the same */}
       <div className="flex-1 flex flex-col bg-white">
-        {/* Webhook Status Header */}
-        <div className="p-4 border-b bg-blue-50">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
-                <span className="text-sm font-medium text-blue-700">Webhook Integration Active</span>
-              </div>
-              <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full">
-                Instant Message Delivery
-              </span>
-            </div>
-            <div className="flex items-center gap-2 text-xs text-blue-600">
-              <span>Backup Sync: 30s</span>
-              <span>•</span>
-              <span>Active Conversations: {conversations.length}</span>
-            </div>
-          </div>
-        </div>
+
         
         {selectedConversation ? (
           <>
@@ -919,8 +893,8 @@ export default function InboxPage() {
                                           <div className="flex items-center gap-2">
                         <p className="text-sm text-gray-500">Facebook Messenger</p>
                         <div className="flex items-center gap-1">
-                          <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                          <span className="text-xs text-blue-600">Webhook + Backup Sync</span>
+                          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                          <span className="text-xs text-green-600">Auto-Sync Active</span>
                         </div>
                       </div>
                   </div>
