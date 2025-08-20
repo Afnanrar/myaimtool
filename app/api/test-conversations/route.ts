@@ -3,6 +3,10 @@ import { supabaseAdmin } from '@/lib/supabase'
 
 export async function GET() {
   try {
+    if (!supabaseAdmin) {
+      return NextResponse.json({ error: 'Database not configured' })
+    }
+    
     // Get the first page from database
     const { data: pages } = await supabaseAdmin
       .from('pages')
