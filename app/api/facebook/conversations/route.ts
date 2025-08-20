@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Get page from database
-  let page = null
+  let page: any = null
   
   try {
     const { data: pageById } = await supabaseAdmin
