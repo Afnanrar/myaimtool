@@ -141,11 +141,57 @@ export default function InboxPage() {
     }
   }
 
+  const loadMessagesSilently = async (conversation: any) => {
+    if (!conversation || !selectedPage) return
+    
+    try {
+      // Load messages for the selected conversation without showing loading state
+      const response = await fetch(`/api/facebook/messages?conversationId=${conversation.id}`)
+      const data = await response.json()
+      
+      if (!response.ok) {
+        setError(data.error || 'Failed to load messages')
+        setMessages([])
+        return
+      }
+      
+      if (data.messages && data.messages.length > 0) {
+        setMessages(data.messages)
+        setError('')
+      } else {
+        setMessages([])
+        setError('No messages found in this conversation.')
+      }
+    } catch (error: any) {
+      console.error('Error loading messages silently:', error)
+      setError('Failed to load messages: ' + (error.message || 'Unknown error'))
+      setMessages([])
+    }
+  }
+
   const sendMessage = async () => {
     if (!selectedConversation || !selectedPage || !newMessageText.trim()) return
     
+    const messageText = newMessageText.trim()
     setSendingMessage(true)
     setError('')
+    
+    // Create optimistic message immediately
+    const optimisticMessage = {
+      id: `temp-${Date.now()}`,
+      conversation_id: selectedConversation.id,
+      facebook_message_id: `temp-${Date.now()}`,
+      sender_id: selectedPage.facebook_page_id || selectedPage.id,
+      message_text: messageText,
+      is_from_page: true,
+      created_at: new Date().toISOString()
+    }
+    
+    // Add message to UI immediately
+    setMessages(prev => [...prev, optimisticMessage])
+    
+    // Clear input immediately
+    setNewMessageText('')
     
     try {
       const response = await fetch('/api/facebook/send-message', {
@@ -155,7 +201,7 @@ export default function InboxPage() {
         },
         body: JSON.stringify({
           conversationId: selectedConversation.id,
-          messageText: newMessageText.trim(),
+          messageText: messageText,
           pageId: selectedPage.id || selectedPage.facebook_page_id
         })
       })
@@ -164,14 +210,19 @@ export default function InboxPage() {
       
       if (!response.ok) {
         setError(data.error || 'Failed to send message')
+        // Remove optimistic message on error
+        setMessages(prev => prev.filter(msg => msg.id !== optimisticMessage.id))
+        // Restore the message text
+        setNewMessageText(messageText)
         return
       }
       
-      // Message sent successfully
-      setNewMessageText('')
-      
-      // Reload messages to show the new message
-      await loadMessages(selectedConversation)
+      // Message sent successfully - replace optimistic message with real one
+      setMessages(prev => prev.map(msg => 
+        msg.id === optimisticMessage.id 
+          ? { ...msg, id: data.messageId, facebook_message_id: data.facebookMessageId }
+          : msg
+      ))
       
       // Show success message briefly
       setError('')
@@ -181,6 +232,10 @@ export default function InboxPage() {
     } catch (error: any) {
       console.error('Error sending message:', error)
       setError('Failed to send message: ' + (error.message || 'Unknown error'))
+      // Remove optimistic message on error
+      setMessages(prev => prev.filter(msg => msg.id !== optimisticMessage.id))
+      // Restore the message text
+      setNewMessageText(messageText)
     } finally {
       setSendingMessage(false)
     }
@@ -345,8 +400,9 @@ export default function InboxPage() {
                   key={conv.id}
                   onClick={() => {
                     setSelectedConversation(conv)
-                    loadMessages(conv)
                     setNewMessageText('') // Clear message input when switching conversations
+                    // Load messages without showing loading state for better UX
+                    loadMessagesSilently(conv)
                   }}
                   className={`w-full p-4 hover:bg-gray-50 transition-colors flex items-start gap-3 ${
                     selectedConversation?.id === conv.id ? 'bg-blue-50' : ''
@@ -440,16 +496,24 @@ export default function InboxPage() {
                       className={`flex ${message.is_from_page ? 'justify-end' : 'justify-start'}`}
                     >
                       <div
-                        className={`max-w-xs px-4 py-2 rounded-lg ${
+                        className={`max-w-xs px-4 py-2 rounded-lg relative ${
                           message.is_from_page
                             ? 'bg-blue-500 text-white'
                             : 'bg-gray-200 text-gray-800'
                         }`}
                       >
                         <p className="text-sm">{message.message_text}</p>
-                        <p className="text-xs opacity-75 mt-1">
-                          {new Date(message.created_at).toLocaleString()}
-                        </p>
+                        <div className="flex items-center justify-between mt-1">
+                          <p className="text-xs opacity-75">
+                            {new Date(message.created_at).toLocaleString()}
+                          </p>
+                          {message.id.startsWith('temp-') && (
+                            <div className="flex items-center text-xs opacity-75">
+                              <div className="w-2 h-2 bg-current rounded-full animate-pulse mr-1"></div>
+                              Sending...
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -470,8 +534,11 @@ export default function InboxPage() {
                 <button 
                   onClick={sendMessage}
                   disabled={sendingMessage || !newMessageText.trim()}
-                  className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 transition-colors"
+                  className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 transition-colors flex items-center"
                 >
+                  {sendingMessage && (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                  )}
                   {sendingMessage ? 'Sending...' : 'Send'}
                 </button>
                 <button
