@@ -89,18 +89,25 @@ export default function InboxPage() {
     // Set up real-time polling for the active conversation
     const interval = setInterval(async () => {
       try {
-        // First sync new messages from Facebook
+        // Always sync new messages from Facebook (not just when new ones are found)
         const syncResponse = await fetch(`/api/facebook/messages/sync?conversationId=${selectedConversation.id}&pageId=${selectedPage.id}`)
         const syncData = await syncResponse.json()
         
-        if (syncResponse.ok && syncData.newMessages && syncData.newMessages.length > 0) {
-          console.log('New incoming messages found:', syncData.newMessages.length)
-          
-          // Get updated messages from database
+        if (syncResponse.ok) {
+          // Get updated messages from database regardless of new messages
           const messagesResponse = await fetch(`/api/facebook/messages/realtime?conversationId=${selectedConversation.id}&pageId=${selectedPage.id}`)
           const messagesData = await messagesResponse.json()
           
           if (messagesResponse.ok && messagesData.messages) {
+            // Check if we have new messages
+            const currentMessageIds = new Set(messages.map(m => m.id))
+            const newMessages = messagesData.messages.filter((m: any) => !currentMessageIds.has(m.id))
+            
+            if (newMessages.length > 0) {
+              console.log('New incoming messages found:', newMessages.length)
+            }
+            
+            // Always update messages to ensure latest state
             setMessages(messagesData.messages)
             
             // Update message cache
@@ -109,18 +116,20 @@ export default function InboxPage() {
               [selectedConversation.id]: messagesData.messages
             }))
             
-            // Update conversation list
-            setConversations(prev => prev.map(conv => 
-              conv.id === selectedConversation.id 
-                ? { ...conv, last_message_time: new Date().toISOString() }
-                : conv
-            ))
+            // Update conversation list if there were new messages
+            if (newMessages.length > 0) {
+              setConversations(prev => prev.map(conv => 
+                conv.id === selectedConversation.id 
+                  ? { ...conv, last_message_time: new Date().toISOString() }
+                  : conv
+              ))
+            }
           }
         }
       } catch (error) {
         console.error('Error in real-time polling:', error)
       }
-    }, 5000) // Check every 5 seconds for active conversation
+    }, 3000) // Check every 3 seconds for active conversation
 
     setRealtimeInterval(interval)
 
@@ -131,18 +140,42 @@ export default function InboxPage() {
     }
   }, [selectedPage, selectedConversation])
 
-  // Fallback polling for all conversations
+  // Background sync for all conversations
   useEffect(() => {
     if (!selectedPage || conversations.length === 0) return
 
-    const interval = setInterval(() => {
-      // Check for new messages every 15 seconds as fallback
-      const lastUpdate = Date.now() - (window as any).lastMessageUpdate || 0
-      if (lastUpdate > 15000) { // 15 seconds
-        console.log('Polling for new messages - fallback to API calls')
-        checkForNewMessages()
+    const interval = setInterval(async () => {
+      try {
+        console.log('Background sync: Checking all conversations for new messages...')
+        
+        // Sync each conversation for new messages
+        for (const conversation of conversations) {
+          try {
+            const syncResponse = await fetch(`/api/facebook/messages/sync?conversationId=${conversation.id}&pageId=${selectedPage.id}`)
+            const syncData = await syncResponse.json()
+            
+            if (syncResponse.ok && syncData.newMessages && syncData.newMessages.length > 0) {
+              console.log(`Background sync: Found ${syncData.newMessages.length} new messages in conversation ${conversation.id}`)
+              
+              // Update conversation list to show new message indicator
+              setConversations(prev => prev.map(conv => 
+                conv.id === conversation.id 
+                  ? { ...conv, last_message_time: new Date().toISOString() }
+                  : conv
+              ))
+            }
+          } catch (error) {
+            console.error(`Error syncing conversation ${conversation.id}:`, error)
+          }
+        }
+        
+        // Update last sync time
+        ;(window as any).lastMessageUpdate = Date.now()
+        
+      } catch (error) {
+        console.error('Error in background sync:', error)
       }
-    }, 15000) // Check every 15 seconds
+    }, 10000) // Check every 10 seconds
 
     return () => clearInterval(interval)
   }, [selectedPage, conversations])
@@ -717,12 +750,18 @@ export default function InboxPage() {
           {/* Status bar */}
           <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
             <span>Pages loaded: {pages.length} | Selected: {selectedPage ? 'Yes' : 'No'}</span>
-            {lastRefreshed && (
-              <span className="flex items-center">
-                <Clock className="h-3 w-3 mr-1" />
-                {lastRefreshed.toLocaleTimeString()}
-              </span>
-            )}
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                <span>Auto-Sync</span>
+              </div>
+              {lastRefreshed && (
+                <span className="flex items-center">
+                  <Clock className="h-3 w-3 mr-1" />
+                  {lastRefreshed.toLocaleTimeString()}
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -849,13 +888,13 @@ export default function InboxPage() {
                     <h3 className="font-semibold text-gray-900">
                       {selectedConversation.participant_name || 'Unknown User'}
                     </h3>
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm text-gray-500">Facebook Messenger</p>
-                      <div className="flex items-center gap-1">
-                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                        <span className="text-xs text-green-600">Live</span>
+                                          <div className="flex items-center gap-2">
+                        <p className="text-sm text-gray-500">Facebook Messenger</p>
+                        <div className="flex items-center gap-1">
+                          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                          <span className="text-xs text-green-600">Auto-Sync Active</span>
+                        </div>
                       </div>
-                    </div>
                   </div>
                 </div>
                 <div className="flex gap-2">
