@@ -11,6 +11,9 @@ export default function InboxPage() {
   const [messages, setMessages] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [loadingMessages, setLoadingMessages] = useState(false)
+  const [sendingMessage, setSendingMessage] = useState(false)
+  const [newMessageText, setNewMessageText] = useState('')
+  const [successMessage, setSuccessMessage] = useState('')
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [error, setError] = useState('')
@@ -138,6 +141,58 @@ export default function InboxPage() {
     }
   }
 
+  const sendMessage = async () => {
+    if (!selectedConversation || !selectedPage || !newMessageText.trim()) return
+    
+    setSendingMessage(true)
+    setError('')
+    
+    try {
+      const response = await fetch('/api/facebook/send-message', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          conversationId: selectedConversation.id,
+          messageText: newMessageText.trim(),
+          pageId: selectedPage.id || selectedPage.facebook_page_id
+        })
+      })
+      
+      const data = await response.json()
+      
+      if (!response.ok) {
+        setError(data.error || 'Failed to send message')
+        return
+      }
+      
+      // Message sent successfully
+      setNewMessageText('')
+      
+      // Reload messages to show the new message
+      await loadMessages(selectedConversation)
+      
+      // Show success message briefly
+      setError('')
+      setSuccessMessage('Message sent successfully!')
+      setTimeout(() => setSuccessMessage(''), 3000) // Hide after 3 seconds
+      
+    } catch (error: any) {
+      console.error('Error sending message:', error)
+      setError('Failed to send message: ' + (error.message || 'Unknown error'))
+    } finally {
+      setSendingMessage(false)
+    }
+  }
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      sendMessage()
+    }
+  }
+
   const filteredConversations = conversations.filter(conv =>
     conv.participant_name?.toLowerCase().includes(searchTerm.toLowerCase())
   )
@@ -202,6 +257,7 @@ export default function InboxPage() {
                         setConversations([]) // Clear conversations when switching pages
                         setSelectedConversation(null) // Clear selected conversation
                         setMessages([]) // Clear messages
+                        setNewMessageText('') // Clear message input
                       }}
                       className={`w-full flex items-center px-4 py-3 hover:bg-gray-50 transition-colors ${
                         selectedPage?.id === page.id ? 'bg-blue-50' : ''
@@ -290,6 +346,7 @@ export default function InboxPage() {
                   onClick={() => {
                     setSelectedConversation(conv)
                     loadMessages(conv)
+                    setNewMessageText('') // Clear message input when switching conversations
                   }}
                   className={`w-full p-4 hover:bg-gray-50 transition-colors flex items-start gap-3 ${
                     selectedConversation?.id === conv.id ? 'bg-blue-50' : ''
@@ -339,6 +396,18 @@ export default function InboxPage() {
                   <p className="text-sm text-gray-500">Facebook Messenger</p>
                 </div>
               </div>
+              
+              {/* Success/Error Messages */}
+              {successMessage && (
+                <div className="mt-3 p-2 bg-green-50 border border-green-200 rounded text-sm text-green-800">
+                  {successMessage}
+                </div>
+              )}
+              {error && (
+                <div className="mt-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-800">
+                  {error}
+                </div>
+              )}
             </div>
             <div className="flex-1 p-4 overflow-y-auto">
               {loadingMessages ? (
@@ -392,10 +461,18 @@ export default function InboxPage() {
                 <input
                   type="text"
                   placeholder="Type a message..."
-                  className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={newMessageText}
+                  onChange={(e) => setNewMessageText(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  disabled={sendingMessage}
+                  className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
                 />
-                <button className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
-                  Send
+                <button 
+                  onClick={sendMessage}
+                  disabled={sendingMessage || !newMessageText.trim()}
+                  className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 transition-colors"
+                >
+                  {sendingMessage ? 'Sending...' : 'Send'}
                 </button>
                 <button
                   onClick={() => loadMessages(selectedConversation)}
