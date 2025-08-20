@@ -32,10 +32,14 @@ export async function GET(req: NextRequest) {
     console.log('Starting OAuth flow...')
     
     // Exchange code for access token
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    console.log('Callback route - baseUrl:', baseUrl)
+    console.log('Callback route - redirect_uri:', `${baseUrl}/api/auth/callback`)
+    
     const tokenResponse = await fetch(
       `https://graph.facebook.com/v19.0/oauth/access_token?` +
       `client_id=${process.env.NEXT_PUBLIC_FACEBOOK_APP_ID}` +
-      `&redirect_uri=${process.env.NEXT_PUBLIC_APP_URL}/api/auth/callback` +
+      `&redirect_uri=${baseUrl}/api/auth/callback` +
       `&client_secret=${process.env.FACEBOOK_APP_SECRET}` +
       `&code=${code}`
     )
