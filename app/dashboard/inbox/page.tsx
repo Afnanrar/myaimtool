@@ -397,6 +397,14 @@ export default function InboxPage() {
                 <button className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
                   Send
                 </button>
+                <button
+                  onClick={() => loadMessages(selectedConversation)}
+                  disabled={loadingMessages}
+                  className="px-3 py-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                  title="Refresh messages"
+                >
+                  <RefreshCw className={`h-4 w-4 ${loadingMessages ? 'animate-spin' : ''}`} />
+                </button>
               </div>
             </div>
           </>
