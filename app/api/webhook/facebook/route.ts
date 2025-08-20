@@ -68,8 +68,13 @@ async function handleMessagingEvent(event: any, pageId: string) {
     }
 
     // Save message to database
+    if (!supabaseAdmin) {
+      console.error('Supabase admin not available')
+      return
+    }
+
     const { data: savedMessage, error: saveError } = await supabaseAdmin
-      ?.from('messages')
+      .from('messages')
       .insert({
         conversation_id: conversation.id,
         facebook_message_id: `webhook_${Date.now()}_${Math.random()}`,
@@ -89,7 +94,7 @@ async function handleMessagingEvent(event: any, pageId: string) {
 
     // Update conversation last message time
     await supabaseAdmin
-      ?.from('conversations')
+      .from('conversations')
       .update({
         last_message_time: new Date(timestamp * 1000).toISOString(),
         updated_at: new Date().toISOString()
@@ -108,10 +113,10 @@ async function handleDeliveryEvent(event: any, pageId: string) {
     const { sender, recipient, delivery } = event
 
     // Mark messages as delivered
-    if (delivery && delivery.mids) {
+    if (delivery && delivery.mids && supabaseAdmin) {
       for (const mid of delivery.mids) {
         await supabaseAdmin
-          ?.from('messages')
+          .from('messages')
           .update({
             delivered_at: new Date().toISOString()
           })
@@ -126,8 +131,13 @@ async function handleDeliveryEvent(event: any, pageId: string) {
 async function findOrCreateConversation(senderId: string, pageId: string) {
   try {
     // First try to find existing conversation
+    if (!supabaseAdmin) {
+      console.error('Supabase admin not available')
+      return null
+    }
+
     const { data: existingConv } = await supabaseAdmin
-      ?.from('conversations')
+      .from('conversations')
       .select('*')
       .eq('participant_id', senderId)
       .eq('page_id', pageId)
@@ -139,7 +149,7 @@ async function findOrCreateConversation(senderId: string, pageId: string) {
 
     // Create new conversation if none exists
     const { data: newConv, error: createError } = await supabaseAdmin
-      ?.from('conversations')
+      .from('conversations')
       .insert({
         facebook_conversation_id: `conv_${senderId}_${pageId}`,
         participant_id: senderId,
