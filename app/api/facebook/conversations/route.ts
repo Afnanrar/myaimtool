@@ -10,13 +10,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Page ID is required' }, { status: 400 })
   }
   
-  try {
-    if (!supabaseAdmin) {
-      return NextResponse.json({ error: 'Database not configured' }, { status: 500 })
-    }
+  if (!supabaseAdmin) {
+    return NextResponse.json({ error: 'Database not configured' }, { status: 500 })
+  }
 
-    // Get page from database
-    let page = null
+  // Get page from database
+  let page = null
+  
+  try {
     const { data: pageById } = await supabaseAdmin
       .from('pages')
       .select('*')
