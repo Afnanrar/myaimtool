@@ -79,7 +79,7 @@ export async function GET(req: NextRequest) {
     if (data.data && data.data.length > 0) {
       for (const conv of data.data) {
         // Find the participant who is not the page
-        const participant = conv.participants?.data?.find(p => p.id !== page.facebook_page_id)
+        const participant = conv.participants?.data?.find((p: any) => p.id !== page.facebook_page_id)
         
         if (participant) {
           // Save to database
