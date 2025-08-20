@@ -22,6 +22,8 @@ export default function MessageThread({ conversationId, pageAccessToken }: Messa
   const [sending, setSending] = useState(false)
   
   useEffect(() => {
+    if (!supabase) return
+    
     loadMessages()
     
     // Subscribe to real-time updates
@@ -40,9 +42,11 @@ export default function MessageThread({ conversationId, pageAccessToken }: Messa
     return () => {
       subscription.unsubscribe()
     }
-  }, [conversationId])
+  }, [conversationId, supabase])
   
   const loadMessages = async () => {
+    if (!supabase) return
+    
     const { data } = await supabase
       .from('messages')
       .select('*')

@@ -20,6 +20,11 @@ export default function SettingsPage() {
   }, [])
   
   const loadPages = async () => {
+    if (!supabase) {
+      setLoading(false)
+      return
+    }
+    
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
@@ -39,6 +44,8 @@ export default function SettingsPage() {
   }
   
   const disconnectPage = async (pageId: string) => {
+    if (!supabase) return
+    
     try {
       await supabase
         .from('pages')

@@ -18,6 +18,11 @@ export default function DashboardPage() {
   }, [])
   
   const loadStats = async () => {
+    if (!supabase) {
+      setLoading(false)
+      return
+    }
+    
     try {
       // Get user ID from auth
       const { data: { user } } = await supabase.auth.getUser()
@@ -180,6 +185,8 @@ function RecentActivity() {
   }, [])
   
   const loadRecentActivity = async () => {
+    if (!supabase) return
+    
     const { data } = await supabase
       .from('messages')
       .select(`

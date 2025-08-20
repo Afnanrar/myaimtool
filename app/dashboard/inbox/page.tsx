@@ -33,7 +33,7 @@ export default function InboxPage() {
   }, [selectedPage])
   
   const loadConversations = async () => {
-    if (!selectedPage) return
+    if (!selectedPage || !supabase) return
     
     setLoading(true)
     try {
@@ -59,6 +59,8 @@ export default function InboxPage() {
   }
   
   const markAsRead = async (conversationId: string) => {
+    if (!supabase) return
+    
     await supabase
       .from('conversations')
       .update({ unread_count: 0 })
