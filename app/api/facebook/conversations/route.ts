@@ -9,6 +9,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Page ID is required' }, { status: 400 })
   }
   
+  if (!supabaseAdmin) {
+    return NextResponse.json({ error: 'Database not configured' }, { status: 500 })
+  }
+
   try {
     // First, check if this is a database ID or Facebook page ID
     let page = null
