@@ -5,10 +5,10 @@ import { useRouter } from 'next/navigation'
 import { RefreshCw, AlertCircle, CheckCircle } from 'lucide-react'
 
 export default function SettingsPage() {
-  const [pages, setPages] = useState([])
+  const [pages, setPages] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
-  const [debugInfo, setDebugInfo] = useState(null)
+  const [debugInfo, setDebugInfo] = useState<any>(null)
   const router = useRouter()
   
   useEffect(() => {
