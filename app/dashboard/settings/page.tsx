@@ -15,6 +15,7 @@ export default function SettingsPage() {
   const [pages, setPages] = useState<Page[]>([])
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
+  const [debugInfo, setDebugInfo] = useState<any>(null)
   const router = useRouter()
   
   useEffect(() => {
@@ -22,23 +23,42 @@ export default function SettingsPage() {
   }, [])
   
   const loadPages = async () => {
+    setLoading(true)
     try {
       console.log('Loading pages from API...')
       const response = await fetch('/api/facebook/pages')
+      const data = await response.json()
+      
+      console.log('Pages API Response:', data)
+      
       if (!response.ok) {
         if (response.status === 401) {
           console.log('Unauthorized, redirecting to login')
           router.push('/login')
           return
         }
-        throw new Error('Failed to load pages')
+        
+        setMessage(data.error || 'Failed to load pages')
+        setDebugInfo(data)
+        return
       }
-      const data = await response.json()
-      console.log('Pages loaded:', data)
-      setPages(data.pages || [])
-    } catch (error) {
+      
+      if (data.pages && data.pages.length > 0) {
+        setPages(data.pages)
+        setMessage(`Found ${data.pages.length} page(s)`)
+      } else if (data.rawPages && data.rawPages.length > 0) {
+        // Pages exist but couldn't be saved
+        setMessage(`Found ${data.rawPages.length} page(s) but couldn't save to database`)
+        setDebugInfo(data)
+      } else {
+        setMessage('No pages found. Check the debug info below.')
+        setDebugInfo(data)
+      }
+    } catch (error: any) {
       console.error('Error loading pages:', error)
-      setMessage('Failed to load pages')
+      setMessage('Failed to load pages: ' + error.message)
+    } finally {
+      setLoading(false)
     }
   }
   
@@ -59,12 +79,17 @@ export default function SettingsPage() {
         setMessage('No pages found. Make sure you have admin access to at least one Facebook Page.')
         console.log('No pages found in response')
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error connecting pages:', error)
       setMessage('Failed to connect pages. Please try again.')
     } finally {
       setLoading(false)
     }
+  }
+  
+  const reauthorize = () => {
+    // Force re-login with correct permissions
+    window.location.href = '/api/auth/logout'
   }
   
   return (
@@ -73,9 +98,31 @@ export default function SettingsPage() {
       
       {message && (
         <div className={`p-4 rounded mb-4 ${
-          message.includes('Success') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+          message.includes('Found') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
         }`}>
           {message}
+        </div>
+      )}
+      
+      {debugInfo && (
+        <div className="bg-gray-100 p-4 rounded mb-4">
+          <h3 className="font-semibold mb-2">Debug Information:</h3>
+          <pre className="text-xs overflow-auto">
+            {JSON.stringify(debugInfo, null, 2)}
+          </pre>
+          
+          {debugInfo.permissions && (
+            <div className="mt-4">
+              <h4 className="font-semibold">Current Permissions:</h4>
+              <ul className="text-sm">
+                {debugInfo.permissions.map((perm: any) => (
+                  <li key={perm.permission}>
+                    {perm.permission}: {perm.status}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
       
@@ -85,13 +132,21 @@ export default function SettingsPage() {
         {pages.length === 0 ? (
           <div className="text-center py-8">
             <p className="text-gray-500 mb-4">No pages connected yet</p>
-            <button
-              onClick={connectPages}
-              disabled={loading}
-              className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-            >
-              {loading ? 'Connecting...' : 'Connect Facebook Pages'}
-            </button>
+            <div className="space-y-2">
+              <button
+                onClick={loadPages}
+                disabled={loading}
+                className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 mr-2"
+              >
+                {loading ? 'Loading...' : 'Retry Loading Pages'}
+              </button>
+              <button
+                onClick={reauthorize}
+                className="px-6 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+              >
+                Re-authorize with Facebook
+              </button>
+            </div>
           </div>
         ) : (
           <div className="space-y-4">
@@ -119,12 +174,12 @@ export default function SettingsPage() {
       </div>
       
       <div className="mt-8 p-4 bg-yellow-50 border border-yellow-200 rounded">
-        <h3 className="font-semibold text-yellow-800 mb-2">Important Notes:</h3>
+        <h3 className="font-semibold text-yellow-800 mb-2">Troubleshooting:</h3>
         <ul className="text-sm text-yellow-700 space-y-1">
-          <li>• You must be an admin of the Facebook Page to connect it</li>
-          <li>• Pages need to have messaging enabled</li>
-          <li>• Make sure your Facebook App has the necessary permissions</li>
-          <li>• In development mode, only test users can use the app</li>
+          <li>• Make sure you're logged in with the Facebook account that owns the page</li>
+          <li>• Your app needs 'pages_messaging' permission (currently in development)</li>
+          <li>• Try clicking "Re-authorize with Facebook" to request permissions again</li>
+          <li>• In development mode, only test users and app admins can use the app</li>
         </ul>
       </div>
     </div>
