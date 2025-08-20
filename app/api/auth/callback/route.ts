@@ -4,6 +4,11 @@ import { cookies } from 'next/headers'
 import jwt from 'jsonwebtoken'
 
 export async function GET(req: NextRequest) {
+  // Check if required environment variables are set
+  if (!process.env.NEXT_PUBLIC_FACEBOOK_APP_ID || !process.env.FACEBOOK_APP_SECRET || !process.env.JWT_SECRET) {
+    return NextResponse.redirect('/login?error=service_not_configured')
+  }
+  
   const { searchParams } = new URL(req.url)
   const code = searchParams.get('code')
   

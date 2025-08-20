@@ -6,10 +6,24 @@ import ConversationList from '@/components/dashboard/ConversationList'
 import MessageThread from '@/components/dashboard/MessageThread'
 import PageSelector from '@/components/dashboard/PageSelector'
 
+interface Page {
+  id: string
+  name: string
+  access_token: string
+}
+
+interface Conversation {
+  id: string
+  participant_name: string
+  last_message_time: string
+  unread_count: number
+  messages: { count: number }
+}
+
 export default function InboxPage() {
-  const [selectedPage, setSelectedPage] = useState(null)
-  const [selectedConversation, setSelectedConversation] = useState(null)
-  const [conversations, setConversations] = useState([])
+  const [selectedPage, setSelectedPage] = useState<Page | null>(null)
+  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null)
+  const [conversations, setConversations] = useState<Conversation[]>([])
   const [loading, setLoading] = useState(false)
   
   useEffect(() => {
@@ -19,6 +33,8 @@ export default function InboxPage() {
   }, [selectedPage])
   
   const loadConversations = async () => {
+    if (!selectedPage) return
+    
     setLoading(true)
     try {
       const response = await fetch(`/api/facebook/conversations?pageId=${selectedPage.id}`)
@@ -42,7 +58,7 @@ export default function InboxPage() {
     }
   }
   
-  const markAsRead = async (conversationId) => {
+  const markAsRead = async (conversationId: string) => {
     await supabase
       .from('conversations')
       .update({ unread_count: 0 })

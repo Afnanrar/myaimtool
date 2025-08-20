@@ -4,8 +4,14 @@ import BroadcastForm from '@/components/dashboard/BroadcastForm'
 import PageSelector from '@/components/dashboard/PageSelector'
 import { useState } from 'react'
 
+interface Page {
+  id: string
+  name: string
+  access_token: string
+}
+
 export default function BroadcastPage() {
-  const [selectedPage, setSelectedPage] = useState(null)
+  const [selectedPage, setSelectedPage] = useState<Page | null>(null)
   
   return (
     <div className="p-8">

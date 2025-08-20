@@ -4,8 +4,15 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Users, Trash2, RefreshCw } from 'lucide-react'
 
+interface Page {
+  id: string
+  name: string
+  access_token: string
+  created_at: string
+}
+
 export default function SettingsPage() {
-  const [pages, setPages] = useState([])
+  const [pages, setPages] = useState<Page[]>([])
   const [loading, setLoading] = useState(true)
   
   useEffect(() => {

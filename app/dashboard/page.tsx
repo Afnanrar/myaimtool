@@ -162,8 +162,18 @@ export default function DashboardPage() {
   )
 }
 
+interface Activity {
+  id: string
+  message_text: string
+  created_at: string
+  is_from_page: boolean
+  conversation?: {
+    participant_name: string
+  }
+}
+
 function RecentActivity() {
-  const [activities, setActivities] = useState([])
+  const [activities, setActivities] = useState<Activity[]>([])
   
   useEffect(() => {
     loadRecentActivity()
@@ -176,15 +186,25 @@ function RecentActivity() {
         id,
         message_text,
         created_at,
-        is_from_page,
-        conversation:conversations(
-          participant_name
-        )
+        is_from_page
       `)
       .order('created_at', { ascending: false })
       .limit(5)
     
-    setActivities(data || [])
+    if (data) {
+      const formattedData = data.map(item => ({
+        id: item.id,
+        message_text: item.message_text,
+        created_at: item.created_at,
+        is_from_page: item.is_from_page,
+        conversation: {
+          participant_name: 'User'
+        }
+      }))
+      setActivities(formattedData)
+    } else {
+      setActivities([])
+    }
   }
   
   return (

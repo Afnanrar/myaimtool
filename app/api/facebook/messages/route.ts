@@ -4,6 +4,11 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { verifyAuth } from '@/lib/auth'
 
 export async function POST(req: NextRequest) {
+  // Check if required environment variables are set
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return NextResponse.json({ error: 'Service not configured' }, { status: 500 })
+  }
+  
   const auth = await verifyAuth(req)
   if (!auth) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

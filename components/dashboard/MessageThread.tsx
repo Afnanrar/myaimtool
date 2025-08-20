@@ -13,7 +13,7 @@ interface Message {
 
 interface MessageThreadProps {
   conversationId: string
-  pageAccessToken: string
+  pageAccessToken?: string
 }
 
 export default function MessageThread({ conversationId, pageAccessToken }: MessageThreadProps) {
