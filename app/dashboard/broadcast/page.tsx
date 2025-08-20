@@ -1,33 +1,54 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Send, AlertCircle, ChevronDown, CheckCircle, Users, Info } from 'lucide-react'
+import { Send, AlertCircle, ChevronDown, CheckCircle, Users, Info, Clock } from 'lucide-react'
 
-interface Page {
-  id: string
-  name: string
-  access_token: string
-  facebook_page_id: string
-}
-
-interface BroadcastResult {
-  success: boolean
-  recipientCount: number
-  broadcastId: string
-}
+// Facebook Message Tags with descriptions
+const MESSAGE_TAGS = [
+  {
+    value: '',
+    label: 'Select a tag',
+    description: ''
+  },
+  {
+    value: 'POST_PURCHASE_UPDATE',
+    label: 'Post-Purchase Update',
+    description: 'Send order confirmations, shipment notifications, or other post-purchase updates'
+  },
+  {
+    value: 'CONFIRMED_EVENT_UPDATE', 
+    label: 'Confirmed Event Update',
+    description: 'Send reminders or updates about an event the user has registered for'
+  },
+  {
+    value: 'ACCOUNT_UPDATE',
+    label: 'Account Update',
+    description: 'Send non-promotional updates about account changes or status'
+  }
+]
 
 export default function BroadcastPage() {
-  const [selectedPage, setSelectedPage] = useState<Page | null>(null)
-  const [pages, setPages] = useState<Page[]>([])
+  const [selectedPage, setSelectedPage] = useState(null)
+  const [pages, setPages] = useState([])
   const [message, setMessage] = useState('')
+  const [messageTag, setMessageTag] = useState('')
   const [useSpintax, setUseSpintax] = useState(false)
   const [sending, setSending] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
-  const [eligibleCount, setEligibleCount] = useState(0)
-  const [broadcastResult, setBroadcastResult] = useState<BroadcastResult | null>(null)
+  const [tagDropdownOpen, setTagDropdownOpen] = useState(false)
+  const [broadcastResult, setBroadcastResult] = useState(null)
   const [error, setError] = useState('')
   const [preview, setPreview] = useState('')
   const [loadingPages, setLoadingPages] = useState(true)
+  const [audienceStats, setAudienceStats] = useState({
+    totalLeads: 0,
+    within24h: 0,
+    after24h: 0,
+    optedOut: 0,
+    blocked: 0,
+    eligible: 0
+  })
+  const [showPreflightSummary, setShowPreflightSummary] = useState(false)
 
   useEffect(() => {
     loadPages()
@@ -35,7 +56,7 @@ export default function BroadcastPage() {
 
   useEffect(() => {
     if (selectedPage) {
-      checkEligibleRecipients()
+      loadAudienceStats()
     }
   }, [selectedPage])
 
@@ -65,18 +86,18 @@ export default function BroadcastPage() {
     }
   }
 
-  const checkEligibleRecipients = async () => {
+  const loadAudienceStats = async () => {
     if (!selectedPage) return
     
     try {
-      const response = await fetch(`/api/facebook/eligible-recipients?pageId=${selectedPage.id}`)
+      const response = await fetch(`/api/facebook/audience-stats?pageId=${selectedPage.id}`)
       const data = await response.json()
       
-      if (data.count !== undefined) {
-        setEligibleCount(data.count)
+      if (data.stats) {
+        setAudienceStats(data.stats)
       }
     } catch (error) {
-      console.error('Error checking recipients:', error)
+      console.error('Error loading audience stats:', error)
     }
   }
 
@@ -90,12 +111,41 @@ export default function BroadcastPage() {
     setPreview(processed)
   }
 
-  const sendBroadcast = async () => {
-    if (!message.trim() || !selectedPage) {
-      setError('Please select a page and enter a message')
+  const validateBroadcast = () => {
+    const errors = []
+    
+    if (!selectedPage) {
+      errors.push('Please select a page')
+    }
+    
+    if (!message.trim()) {
+      errors.push('Message content is required')
+    }
+    
+    if (!messageTag) {
+      errors.push('Message Tag is required')
+    }
+    
+    if (audienceStats.eligible === 0) {
+      errors.push('No eligible recipients found')
+    }
+    
+    return errors
+  }
+
+  const handleSendBroadcast = () => {
+    const errors = validateBroadcast()
+    
+    if (errors.length > 0) {
+      setError(errors.join('. '))
       return
     }
+    
+    setShowPreflightSummary(true)
+  }
 
+  const confirmAndSend = async () => {
+    setShowPreflightSummary(false)
     setSending(true)
     setError('')
     setBroadcastResult(null)
@@ -107,7 +157,9 @@ export default function BroadcastPage() {
         body: JSON.stringify({
           pageId: selectedPage.id,
           message,
-          useSpintax
+          messageTag,
+          useSpintax,
+          audience: 'all_leads' // Always send to all leads
         })
       })
 
@@ -116,20 +168,28 @@ export default function BroadcastPage() {
       if (response.ok) {
         setBroadcastResult({
           success: true,
-          recipientCount: data.recipientCount,
+          totalLeads: data.totalLeads,
+          sent24h: data.sent24h,
+          sentWithTag: data.sentWithTag,
+          failed: data.failed,
+          excluded: data.excluded,
           broadcastId: data.broadcastId
         })
         setMessage('')
         setPreview('')
+        setMessageTag('')
       } else {
         setError(data.error || 'Failed to send broadcast')
       }
-    } catch (error: any) {
-      setError('Failed to send broadcast: ' + (error.message || 'Unknown error'))
+    } catch (error) {
+      setError('Failed to send broadcast: ' + error.message)
     } finally {
       setSending(false)
     }
   }
+
+  // Check if send button should be disabled
+  const isSendDisabled = !selectedPage || !message.trim() || !messageTag || sending || audienceStats.eligible === 0
 
   if (loadingPages) {
     return (
@@ -238,12 +298,100 @@ export default function BroadcastPage() {
               />
               <div className="flex justify-between mt-2">
                 <p className="text-xs text-gray-500">{message.length} characters</p>
-                {eligibleCount > 0 && (
+              </div>
+            </div>
+
+            {/* Select Audience Section */}
+            <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <h3 className="text-sm font-medium text-gray-900 mb-3">Select Audience</h3>
+              <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200">
+                <div className="flex items-center">
+                  <input
+                    type="radio"
+                    id="all_leads"
+                    name="audience"
+                    checked={true}
+                    readOnly
+                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                  />
+                  <label htmlFor="all_leads" className="ml-3">
+                    <p className="text-sm font-medium text-gray-900">All Leads</p>
+                    <p className="text-xs text-gray-600">Send message to all leads from this Facebook Page</p>
+                  </label>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-semibold text-gray-900">{audienceStats.totalLeads} leads</p>
                   <p className="text-xs text-gray-500">
-                    {eligibleCount} eligible recipients
+                    {audienceStats.within24h} ≤24h, {audienceStats.after24h} 24h+
                   </p>
+                </div>
+              </div>
+              
+              {audienceStats.eligible < audienceStats.totalLeads && (
+                <div className="mt-3 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                  <p className="text-xs text-yellow-800">
+                    <span className="font-semibold">Excluded:</span> {audienceStats.optedOut} opted-out, {audienceStats.blocked} blocked
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Message Tag Selector */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Message Tag <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <button
+                  onClick={() => setTagDropdownOpen(!tagDropdownOpen)}
+                  className={`w-full flex items-center justify-between px-4 py-3 bg-white border ${
+                    !messageTag ? 'border-red-300' : 'border-gray-300'
+                  } rounded-lg hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors text-left`}
+                >
+                  <div className="flex-1">
+                    {messageTag ? (
+                      <div>
+                        <p className="text-gray-900 font-medium">
+                          {MESSAGE_TAGS.find(t => t.value === messageTag)?.label}
+                        </p>
+                        <p className="text-xs text-gray-600 mt-1">
+                          {MESSAGE_TAGS.find(t => t.value === messageTag)?.description}
+                        </p>
+                      </div>
+                    ) : (
+                      <span className="text-gray-500">Select a tag</span>
+                    )}
+                  </div>
+                  <ChevronDown className={`h-5 w-5 text-gray-400 transition-transform flex-shrink-0 ml-2 ${tagDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {tagDropdownOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setTagDropdownOpen(false)} />
+                    <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-1 max-h-64 overflow-y-auto">
+                      {MESSAGE_TAGS.filter(tag => tag.value).map((tag) => (
+                        <button
+                          key={tag.value}
+                          onClick={() => {
+                            setMessageTag(tag.value)
+                            setTagDropdownOpen(false)
+                            setError('') // Clear error when tag is selected
+                          }}
+                          className={`w-full px-4 py-3 hover:bg-gray-50 transition-colors text-left ${
+                            messageTag === tag.value ? 'bg-blue-50' : ''
+                          }`}
+                        >
+                          <p className="text-sm font-medium text-gray-900">{tag.label}</p>
+                          <p className="text-xs text-gray-600 mt-1">{tag.description}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </>
                 )}
               </div>
+              {!messageTag && error.includes('Tag') && (
+                <p className="text-xs text-red-600 mt-1">Message Tag is required.</p>
+              )}
             </div>
 
             {/* Spintax Option */}
@@ -295,7 +443,7 @@ export default function BroadcastPage() {
             )}
 
             {/* Error Message */}
-            {error && (
+            {error && !showPreflightSummary && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
                 <div className="flex items-center">
                   <AlertCircle className="h-5 w-5 text-red-600 mr-2" />
@@ -307,11 +455,22 @@ export default function BroadcastPage() {
             {/* Success Message */}
             {broadcastResult && (
               <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
-                <div className="flex items-center">
-                  <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
-                  <p className="text-sm text-green-800">
-                    Broadcast sent successfully to {broadcastResult.recipientCount} recipients!
-                  </p>
+                <div className="flex items-start">
+                  <CheckCircle className="h-5 w-5 text-green-600 mr-2 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-green-800">Broadcast sent successfully!</p>
+                    <div className="mt-2 text-xs text-green-700 space-y-1">
+                      <p>• Total leads: {broadcastResult.totalLeads}</p>
+                      <p>• Sent (≤24h): {broadcastResult.sent24h}</p>
+                      <p>• Sent with tag (24h+): {broadcastResult.sentWithTag}</p>
+                      {broadcastResult.failed > 0 && (
+                        <p>• Failed: {broadcastResult.failed}</p>
+                      )}
+                      {broadcastResult.excluded > 0 && (
+                        <p>• Excluded: {broadcastResult.excluded}</p>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -322,6 +481,7 @@ export default function BroadcastPage() {
                 onClick={() => {
                   setMessage('')
                   setPreview('')
+                  setMessageTag('')
                   setBroadcastResult(null)
                   setError('')
                 }}
@@ -331,9 +491,10 @@ export default function BroadcastPage() {
                 Clear
               </button>
               <button
-                onClick={sendBroadcast}
-                disabled={sending || !message.trim() || !selectedPage}
+                onClick={handleSendBroadcast}
+                disabled={isSendDisabled}
                 className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium transition-colors flex items-center"
+                title={isSendDisabled ? 'Please fill all required fields' : 'Send broadcast'}
               >
                 {sending ? (
                   <>
@@ -350,6 +511,52 @@ export default function BroadcastPage() {
             </div>
           </div>
         </div>
+
+        {/* Preflight Summary Modal */}
+        {showPreflightSummary && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+              <div className="p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Confirm Broadcast</h3>
+                
+                <div className="space-y-3 mb-6">
+                  <p className="text-sm text-gray-700">
+                    You're about to send to: <span className="font-semibold">{audienceStats.eligible} total recipients</span>
+                  </p>
+                  
+                  <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-700 space-y-1">
+                    <p>• {audienceStats.within24h} will receive as standard messages (≤24h)</p>
+                    <p>• {audienceStats.after24h} will receive with {MESSAGE_TAGS.find(t => t.value === messageTag)?.label} tag (24h+)</p>
+                    {(audienceStats.optedOut > 0 || audienceStats.blocked > 0) && (
+                      <p className="text-yellow-700">• {audienceStats.optedOut + audienceStats.blocked} excluded (opted-out/blocked)</p>
+                    )}
+                  </div>
+                  
+                  <div className="p-3 bg-blue-50 rounded-lg">
+                    <p className="text-xs text-blue-800">
+                      <span className="font-semibold">Message Tag:</span> {MESSAGE_TAGS.find(t => t.value === messageTag)?.label}
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="flex justify-end space-x-3">
+                  <button
+                    onClick={() => setShowPreflightSummary(false)}
+                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={confirmAndSend}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  >
+                    Confirm & Send
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
