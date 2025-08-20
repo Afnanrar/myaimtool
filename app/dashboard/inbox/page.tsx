@@ -22,6 +22,7 @@ export default function InboxPage() {
   const [error, setError] = useState('')
   const [loadingPages, setLoadingPages] = useState(true)
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null)
+  const [realtimeInterval, setRealtimeInterval] = useState<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     loadPages()
@@ -76,18 +77,70 @@ export default function InboxPage() {
     }
   }, [supabase, selectedPage, conversations])
 
-  // More frequent polling as fallback for real-time updates
+  // Real-time message polling for active conversation
+  useEffect(() => {
+    if (!selectedPage || !selectedConversation) return
+
+    // Clear any existing interval
+    if (realtimeInterval) {
+      clearInterval(realtimeInterval)
+    }
+
+    // Set up real-time polling for the active conversation
+    const interval = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/facebook/messages/realtime?conversationId=${selectedConversation.id}&pageId=${selectedPage.id}`)
+        const data = await response.json()
+        
+        if (response.ok && data.messages) {
+          // Check if we have new messages
+          const currentMessageIds = new Set(messages.map(m => m.id))
+          const newMessages = data.messages.filter((m: any) => !currentMessageIds.has(m.id))
+          
+          if (newMessages.length > 0) {
+            console.log('New messages found:', newMessages.length)
+            setMessages(data.messages)
+            
+            // Update message cache
+            setMessageCache(prev => ({
+              ...prev,
+              [selectedConversation.id]: data.messages
+            }))
+            
+            // Update conversation list
+            setConversations(prev => prev.map(conv => 
+              conv.id === selectedConversation.id 
+                ? { ...conv, last_message_time: new Date().toISOString() }
+                : conv
+            ))
+          }
+        }
+      } catch (error) {
+        console.error('Error in real-time polling:', error)
+      }
+    }, 3000) // Check every 3 seconds for active conversation
+
+    setRealtimeInterval(interval)
+
+    return () => {
+      if (interval) {
+        clearInterval(interval)
+      }
+    }
+  }, [selectedPage, selectedConversation])
+
+  // Fallback polling for all conversations
   useEffect(() => {
     if (!selectedPage || conversations.length === 0) return
 
     const interval = setInterval(() => {
-      // Check for new messages every 10 seconds as fallback
+      // Check for new messages every 15 seconds as fallback
       const lastUpdate = Date.now() - (window as any).lastMessageUpdate || 0
-      if (lastUpdate > 10000) { // 10 seconds
+      if (lastUpdate > 15000) { // 15 seconds
         console.log('Polling for new messages - fallback to API calls')
         checkForNewMessages()
       }
-    }, 10000) // Check every 10 seconds
+    }, 15000) // Check every 15 seconds
 
     return () => clearInterval(interval)
   }, [selectedPage, conversations])
@@ -489,14 +542,14 @@ export default function InboxPage() {
     setNewMessageText('')
     
     try {
-      const response = await fetch('/api/facebook/send-message', {
+      const response = await fetch('/api/facebook/messages/realtime', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           conversationId: selectedConversation.id,
-          messageText: messageText,
+          message: messageText,
           pageId: selectedPage.id || selectedPage.facebook_page_id
         })
       })
@@ -780,7 +833,13 @@ export default function InboxPage() {
                     <h3 className="font-semibold text-gray-900">
                       {selectedConversation.participant_name || 'Unknown User'}
                     </h3>
-                    <p className="text-sm text-gray-500">Facebook Messenger</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm text-gray-500">Facebook Messenger</p>
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                        <span className="text-xs text-green-600">Live</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
                 <button
