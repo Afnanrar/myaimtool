@@ -35,6 +35,10 @@ export async function GET(req: NextRequest) {
     const userData = await userResponse.json()
     
     // Save user to database
+    if (!supabaseAdmin) {
+      throw new Error('Database not configured')
+    }
+    
     const { data: user } = await supabaseAdmin
       .from('users')
       .upsert({

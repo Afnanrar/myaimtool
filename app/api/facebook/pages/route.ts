@@ -18,6 +18,10 @@ export async function GET(req: NextRequest) {
     const fb = new FacebookAPI(auth.accessToken)
     const pagesData = await fb.getPages()
     
+    if (!supabaseAdmin) {
+      throw new Error('Database not configured')
+    }
+    
     // Store pages in database
     for (const page of pagesData.data) {
       await supabaseAdmin

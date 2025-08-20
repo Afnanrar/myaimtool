@@ -16,6 +16,10 @@ export async function POST(req: NextRequest) {
   
   const { pageId, message, useSpintax } = await req.json()
   
+  if (!supabaseAdmin) {
+    return NextResponse.json({ error: 'Database not configured' }, { status: 500 })
+  }
+  
   // Get page and recent conversations
   const { data: page } = await supabaseAdmin
     .from('pages')

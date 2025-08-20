@@ -17,6 +17,10 @@ export async function POST(req: NextRequest) {
   const { conversationId, message } = await req.json()
   
   try {
+    if (!supabaseAdmin) {
+      return NextResponse.json({ error: 'Database not configured' }, { status: 500 })
+    }
+    
     // Get conversation and page details
     const { data: conversation } = await supabaseAdmin
       .from('conversations')

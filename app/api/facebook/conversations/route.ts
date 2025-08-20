@@ -17,6 +17,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   
+  if (!supabaseAdmin) {
+    return NextResponse.json({ error: 'Database not configured' }, { status: 500 })
+  }
+  
   // Get page access token from database
   const { data: page } = await supabaseAdmin
     .from('pages')
