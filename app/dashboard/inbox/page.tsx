@@ -41,6 +41,8 @@ export default function InboxPage() {
   }, [selectedPage])
 
   const loadPages = async () => {
+    if (!supabase) return
+    
     try {
       const { data } = await supabase
         .from('pages')
@@ -77,16 +79,18 @@ export default function InboxPage() {
         setConversations(data.conversations)
       } else {
         // If no conversations from API, check database
-        const { data: dbConversations } = await supabase
-          .from('conversations')
-          .select('*')
-          .eq('page_id', selectedPage.id)
-          .order('last_message_time', { ascending: false })
-        
-        setConversations(dbConversations || [])
-        
-        if (!dbConversations || dbConversations.length === 0) {
-          setError('No conversations found. Messages will appear here when customers message your page.')
+        if (supabase) {
+          const { data: dbConversations } = await supabase
+            .from('conversations')
+            .select('*')
+            .eq('page_id', selectedPage.id)
+            .order('last_message_time', { ascending: false })
+          
+          setConversations(dbConversations || [])
+          
+          if (!dbConversations || dbConversations.length === 0) {
+            setError('No conversations found. Messages will appear here when customers message your page.')
+          }
         }
       }
     } catch (error) {
