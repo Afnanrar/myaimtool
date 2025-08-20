@@ -188,55 +188,9 @@ export default function InboxPage() {
     })
   }
 
-  const getUnreadCount = (conversationId: string) => {
-    const messages = messageCache[conversationId] || []
-    // Count messages that are from customers (not from page) and are unread
-    // If is_read is undefined/null, consider it as unread
-    return messages.filter(msg => 
-      !msg.is_from_page && (msg.is_read === false || msg.is_read === undefined || msg.is_read === null)
-    ).length
-  }
 
-  const markMessagesAsRead = async (conversationId: string) => {
-    try {
-      // Mark all customer messages as read in the database
-      const response = await fetch('/api/messages/mark-read', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ conversationId })
-      })
 
-      if (response.ok) {
-        // Update cache to reflect read status
-        setMessageCache(prev => {
-          const conversationMessages = prev[conversationId] || []
-          const updatedMessages = conversationMessages.map(msg => ({
-            ...msg,
-            is_read: msg.is_from_page ? msg.is_read : true // Mark customer messages as read
-          }))
-          
-          return {
-            ...prev,
-            [conversationId]: updatedMessages
-          }
-        })
 
-        // Update conversations list to remove unread count
-        setConversations(prev => prev.map(conv => {
-          if (conv.id === conversationId) {
-            return { ...conv, unread_count: 0 }
-          }
-          return conv
-        }))
-
-        console.log('Messages marked as read for conversation:', conversationId)
-      }
-    } catch (error) {
-      console.error('Error marking messages as read:', error)
-    }
-  }
 
   const handleNewMessage = (newMessage: any) => {
     console.log('Handling new message:', newMessage)
@@ -265,8 +219,7 @@ export default function InboxPage() {
       if (conv.id === newMessage.conversation_id) {
         return {
           ...conv,
-          last_message_time: newMessage.created_at,
-          unread_count: conv.unread_count + (newMessage.is_from_page ? 0 : 1)
+          last_message_time: newMessage.created_at
         }
       }
       return conv
@@ -400,8 +353,6 @@ export default function InboxPage() {
           [conversation.id]: data.messages
         }))
         setError('')
-        // Mark messages as read when loading
-        markMessagesAsRead(conversation.id)
       } else {
         setMessages([])
         // Cache empty messages array
@@ -653,18 +604,7 @@ export default function InboxPage() {
             </button>
           </div>
           
-          {/* Total Unread Count */}
-          {(() => {
-            const totalUnread = conversations.reduce((total, conv) => total + getUnreadCount(conv.id), 0)
-            return totalUnread > 0 ? (
-              <div className="mt-3 flex items-center justify-between">
-                <span className="text-sm text-gray-600">Total unread:</span>
-                <span className="px-2 py-1 bg-red-500 text-white text-xs rounded-full font-medium">
-                  {totalUnread} {totalUnread === 1 ? 'message' : 'messages'}
-                </span>
-              </div>
-            ) : null
-          })()}
+
         </div>
 
         {/* Conversations List */}
@@ -715,8 +655,6 @@ export default function InboxPage() {
                     if (messageCache[conv.id]) {
                       setMessages(messageCache[conv.id])
                       console.log('Messages loaded from cache for:', conv.id)
-                      // Mark messages as read when opening conversation
-                      markMessagesAsRead(conv.id)
                     } else {
                       // Load messages in background if not cached
                       loadMessagesSilently(conv)
@@ -736,14 +674,7 @@ export default function InboxPage() {
                     <p className="text-sm text-gray-500 truncate">
                       Click to view conversation
                     </p>
-                    {(() => {
-                      const unreadCount = getUnreadCount(conv.id)
-                      return unreadCount > 0 ? (
-                        <span className="inline-block px-2 py-1 bg-red-500 text-white text-xs rounded-full mt-1 font-medium">
-                          {unreadCount} {unreadCount === 1 ? 'unread' : 'unread'}
-                        </span>
-                      ) : null
-                    })()}
+
                   </div>
                   <div className="text-xs text-gray-400">
                     {conv.last_message_time && 
