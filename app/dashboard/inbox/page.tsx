@@ -89,22 +89,24 @@ export default function InboxPage() {
     // Set up real-time polling for the active conversation
     const interval = setInterval(async () => {
       try {
-        const response = await fetch(`/api/facebook/messages/realtime?conversationId=${selectedConversation.id}&pageId=${selectedPage.id}`)
-        const data = await response.json()
+        // First sync new messages from Facebook
+        const syncResponse = await fetch(`/api/facebook/messages/sync?conversationId=${selectedConversation.id}&pageId=${selectedPage.id}`)
+        const syncData = await syncResponse.json()
         
-        if (response.ok && data.messages) {
-          // Check if we have new messages
-          const currentMessageIds = new Set(messages.map(m => m.id))
-          const newMessages = data.messages.filter((m: any) => !currentMessageIds.has(m.id))
+        if (syncResponse.ok && syncData.newMessages && syncData.newMessages.length > 0) {
+          console.log('New incoming messages found:', syncData.newMessages.length)
           
-          if (newMessages.length > 0) {
-            console.log('New messages found:', newMessages.length)
-            setMessages(data.messages)
+          // Get updated messages from database
+          const messagesResponse = await fetch(`/api/facebook/messages/realtime?conversationId=${selectedConversation.id}&pageId=${selectedPage.id}`)
+          const messagesData = await messagesResponse.json()
+          
+          if (messagesResponse.ok && messagesData.messages) {
+            setMessages(messagesData.messages)
             
             // Update message cache
             setMessageCache(prev => ({
               ...prev,
-              [selectedConversation.id]: data.messages
+              [selectedConversation.id]: messagesData.messages
             }))
             
             // Update conversation list
@@ -118,7 +120,7 @@ export default function InboxPage() {
       } catch (error) {
         console.error('Error in real-time polling:', error)
       }
-    }, 3000) // Check every 3 seconds for active conversation
+    }, 5000) // Check every 5 seconds for active conversation
 
     setRealtimeInterval(interval)
 
@@ -436,6 +438,20 @@ export default function InboxPage() {
           loadMessagesSilently(conversation, true)
         }
         return
+      }
+      
+      // If force refresh, sync new messages from Facebook first
+      if (forceRefresh) {
+        try {
+          const syncResponse = await fetch(`/api/facebook/messages/sync?conversationId=${conversation.id}&pageId=${selectedPage.id}`)
+          const syncData = await syncResponse.json()
+          
+          if (syncResponse.ok && syncData.newMessages && syncData.newMessages.length > 0) {
+            console.log('Synced new incoming messages:', syncData.newMessages.length)
+          }
+        } catch (error) {
+          console.error('Error syncing messages:', error)
+        }
       }
       
       // Load messages from API
@@ -842,14 +858,38 @@ export default function InboxPage() {
                     </div>
                   </div>
                 </div>
-                <button
-                  onClick={() => loadMessages(selectedConversation, true)}
-                  disabled={loadingMessages}
-                  className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                  title="Refresh messages"
-                >
-                  <div className={`w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full ${loadingMessages ? 'animate-spin' : ''}`}></div>
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={async () => {
+                      try {
+                        const syncResponse = await fetch(`/api/facebook/messages/sync?conversationId=${selectedConversation.id}&pageId=${selectedPage.id}`)
+                        const syncData = await syncResponse.json()
+                        
+                        if (syncResponse.ok && syncData.newMessages && syncData.newMessages.length > 0) {
+                          console.log('Synced new incoming messages:', syncData.newMessages.length)
+                          // Reload messages to show new ones
+                          loadMessages(selectedConversation, true)
+                        } else {
+                          console.log('No new incoming messages found')
+                        }
+                      } catch (error) {
+                        console.error('Error syncing incoming messages:', error)
+                      }
+                    }}
+                    className="p-2 text-green-500 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors"
+                    title="Sync incoming messages from Facebook"
+                  >
+                    <div className="w-4 h-4 border-2 border-green-400 border-t-transparent rounded-full"></div>
+                  </button>
+                  <button
+                    onClick={() => loadMessages(selectedConversation, true)}
+                    disabled={loadingMessages}
+                    className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                    title="Refresh all messages"
+                  >
+                    <div className={`w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full ${loadingMessages ? 'animate-spin' : ''}`}></div>
+                  </button>
+                </div>
               </div>
               
               {/* Success/Error Messages */}
