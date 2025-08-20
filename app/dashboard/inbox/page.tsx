@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { ChevronDown, MessageSquare, Search, RefreshCw, User } from 'lucide-react'
+import { ChevronDown, MessageSquare, Search, User } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
 export default function InboxPage() {
@@ -620,7 +620,7 @@ export default function InboxPage() {
           </div>
         </div>
 
-        {/* Search and Refresh */}
+        {/* Search */}
         <div className="p-4 border-b">
           <div className="flex gap-2">
             <div className="flex-1 relative">
@@ -634,49 +634,7 @@ export default function InboxPage() {
                 disabled={!selectedPage}
               />
             </div>
-            <button
-              onClick={loadConversations}
-              disabled={loading || !selectedPage}
-              className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50"
-              title="Refresh conversations"
-            >
-              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            </button>
-            <button
-              onClick={checkForNewMessages}
-              disabled={!selectedPage || conversations.length === 0}
-              className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50 bg-blue-50"
-              title="Check for new messages"
-            >
-              <RefreshCw className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => {
-                if (selectedConversation) {
-                  loadMessages(selectedConversation)
-                }
-              }}
-              disabled={loadingMessages || !selectedConversation}
-              className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50"
-              title="Refresh messages"
-            >
-              <RefreshCw className={`h-4 w-4 ${loadingMessages ? 'animate-spin' : ''}`} />
-            </button>
-            <button
-              onClick={() => {
-                if (selectedConversation && selectedPage) {
-                  syncMessagesFromFacebook(selectedConversation.id, selectedPage.id)
-                }
-              }}
-              disabled={!selectedConversation || !selectedPage}
-              className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50"
-              title="Sync messages from Facebook"
-            >
-              <RefreshCw className="h-4 w-4" />
-            </button>
           </div>
-          
-
         </div>
 
         {/* Conversations List */}
@@ -865,14 +823,7 @@ export default function InboxPage() {
                   )}
                   {sendingMessage ? 'Sending...' : 'Send'}
                 </button>
-                <button
-                  onClick={() => loadMessages(selectedConversation)}
-                  disabled={loadingMessages}
-                  className="px-3 py-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50"
-                  title="Refresh messages"
-                >
-                  <RefreshCw className={`h-4 w-4 ${loadingMessages ? 'animate-spin' : ''}`} />
-                </button>
+
               </div>
             </div>
           </>
