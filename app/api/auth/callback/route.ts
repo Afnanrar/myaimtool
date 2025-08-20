@@ -6,14 +6,16 @@ import jwt from 'jsonwebtoken'
 export async function GET(req: NextRequest) {
   // Check if required environment variables are set
   if (!process.env.NEXT_PUBLIC_FACEBOOK_APP_ID || !process.env.FACEBOOK_APP_SECRET || !process.env.JWT_SECRET) {
-    return NextResponse.redirect('/login?error=service_not_configured')
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    return NextResponse.redirect(`${baseUrl}/login?error=service_not_configured`)
   }
   
   const { searchParams } = new URL(req.url)
   const code = searchParams.get('code')
   
   if (!code) {
-    return NextResponse.redirect('/login?error=no_code')
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    return NextResponse.redirect(`${baseUrl}/login?error=no_code`)
   }
 
   try {
@@ -68,9 +70,11 @@ export async function GET(req: NextRequest) {
       maxAge: 60 * 60 * 24 * 7 // 7 days
     })
     
-    return NextResponse.redirect('/dashboard')
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    return NextResponse.redirect(`${baseUrl}/dashboard`)
   } catch (error) {
     console.error('Auth error:', error)
-    return NextResponse.redirect('/login?error=auth_failed')
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    return NextResponse.redirect(`${baseUrl}/login?error=auth_failed`)
   }
 }
