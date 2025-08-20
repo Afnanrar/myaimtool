@@ -86,6 +86,11 @@ async function sendBroadcastAsync(
   message: string,
   pageAccessToken: string
 ) {
+  if (!supabaseAdmin) {
+    console.error('Database not configured for broadcast')
+    return
+  }
+  
   const fb = new FacebookAPI(pageAccessToken)
   let sentCount = 0
   let failedCount = 0
