@@ -185,8 +185,10 @@ export default function InboxPage() {
   }, [selectedPage])
 
   const preloadMessages = async (conversations: any[]) => {
-    // Preload messages for all conversations in background
-    conversations.forEach(async (conv) => {
+    // Preload messages for first 3 conversations only to avoid overwhelming the API
+    const conversationsToPreload = conversations.slice(0, 3)
+    
+    conversationsToPreload.forEach(async (conv) => {
       if (!messageCache[conv.id]) {
         try {
           const response = await fetch(`/api/facebook/messages?conversationId=${conv.id}`)
@@ -364,18 +366,29 @@ export default function InboxPage() {
     }
   }
 
-  const loadMessages = async (conversation: any) => {
+  const loadMessages = async (conversation: any, forceRefresh = false) => {
     if (!conversation || !selectedPage) return
     
     setLoadingMessages(true)
     setError('')
     
     try {
-      // Load messages for the selected conversation
-      const response = await fetch(`/api/facebook/messages?conversationId=${conversation.id}`)
-      const data = await response.json()
+      // First try to load from cache for instant response
+      if (!forceRefresh && messageCache[conversation.id]) {
+        setMessages(messageCache[conversation.id])
+        setLoadingMessages(false)
+        
+        // Load fresh data in background if cache is old
+        if (Date.now() - (conversation.lastCacheUpdate || 0) > 30000) { // 30 seconds
+          loadMessagesSilently(conversation, true)
+        }
+        return
+      }
       
-      console.log('Messages response:', data)
+      // Load messages from API
+      const url = `/api/facebook/messages?conversationId=${conversation.id}${forceRefresh ? '&refresh=true' : ''}`
+      const response = await fetch(url)
+      const data = await response.json()
       
       if (!response.ok) {
         setError(data.error || 'Failed to load messages')
@@ -385,11 +398,19 @@ export default function InboxPage() {
       
       if (data.messages && data.messages.length > 0) {
         setMessages(data.messages)
-        // Cache the messages for instant switching
+        // Cache the messages with timestamp
         setMessageCache(prev => ({
           ...prev,
           [conversation.id]: data.messages
         }))
+        
+        // Update conversation with cache timestamp
+        setConversations(prev => prev.map(conv => 
+          conv.id === conversation.id 
+            ? { ...conv, lastCacheUpdate: Date.now() }
+            : conv
+        ))
+        
         setError('')
       } else {
         setMessages([])
@@ -409,17 +430,17 @@ export default function InboxPage() {
     }
   }
 
-  const loadMessagesSilently = async (conversation: any) => {
+  const loadMessagesSilently = async (conversation: any, forceRefresh = false) => {
     if (!conversation || !selectedPage) return
     
     try {
       // Load messages for the selected conversation without showing loading state
-      const response = await fetch(`/api/facebook/messages?conversationId=${conversation.id}`)
+      const url = `/api/facebook/messages?conversationId=${conversation.id}${forceRefresh ? '&refresh=true' : ''}`
+      const response = await fetch(url)
       const data = await response.json()
       
       if (!response.ok) {
-        setError(data.error || 'Failed to load messages')
-        setMessages([])
+        console.error('Failed to load messages silently:', data.error)
         return
       }
       
@@ -430,20 +451,16 @@ export default function InboxPage() {
           ...prev,
           [conversation.id]: data.messages
         }))
-        setError('')
-      } else {
-        setMessages([])
-        // Cache empty messages array
-        setMessageCache(prev => ({
-          ...prev,
-          [conversation.id]: []
-        }))
-        setError('No messages found in this conversation.')
+        
+        // Update conversation with cache timestamp
+        setConversations(prev => prev.map(conv => 
+          conv.id === conversation.id 
+            ? { ...conv, lastCacheUpdate: Date.now() }
+            : conv
+        ))
       }
     } catch (error: any) {
       console.error('Error loading messages silently:', error)
-      setError('Failed to load messages: ' + (error.message || 'Unknown error'))
-      setMessages([])
     }
   }
 
@@ -676,7 +693,10 @@ export default function InboxPage() {
             </div>
           ) : loading && conversations.length === 0 ? (
             <div className="flex items-center justify-center py-8">
-              <div className="text-gray-500">Loading conversations...</div>
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
+                <div className="text-gray-500">Loading conversations...</div>
+              </div>
             </div>
           ) : error ? (
             <div className="p-4">
@@ -751,16 +771,26 @@ export default function InboxPage() {
         {selectedConversation ? (
           <>
             <div className="p-4 border-b">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-gray-300 rounded-full flex items-center justify-center">
-                  <User className="h-5 w-5 text-gray-600" />
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-gray-300 rounded-full flex items-center justify-center">
+                    <User className="h-5 w-5 text-gray-600" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900">
+                      {selectedConversation.participant_name || 'Unknown User'}
+                    </h3>
+                    <p className="text-sm text-gray-500">Facebook Messenger</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-semibold text-gray-900">
-                    {selectedConversation.participant_name || 'Unknown User'}
-                  </h3>
-                  <p className="text-sm text-gray-500">Facebook Messenger</p>
-                </div>
+                <button
+                  onClick={() => loadMessages(selectedConversation, true)}
+                  disabled={loadingMessages}
+                  className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="Refresh messages"
+                >
+                  <div className={`w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full ${loadingMessages ? 'animate-spin' : ''}`}></div>
+                </button>
               </div>
               
               {/* Success/Error Messages */}

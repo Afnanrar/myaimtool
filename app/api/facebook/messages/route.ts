@@ -67,6 +67,7 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const conversationId = searchParams.get('conversationId')
+  const forceRefresh = searchParams.get('refresh') === 'true'
   
   if (!conversationId) {
     return NextResponse.json({ error: 'Conversation ID is required' }, { status: 400 })
@@ -77,7 +78,26 @@ export async function GET(req: NextRequest) {
   }
   
   try {
-    // First, get the conversation details
+    // First, try to load from database cache (instant)
+    if (!forceRefresh) {
+      const { data: cachedMessages } = await supabaseAdmin
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: true })
+        .limit(100) // Limit to prevent memory issues
+      
+      if (cachedMessages && cachedMessages.length > 0) {
+        // Return cached data immediately
+        return NextResponse.json({ 
+          messages: cachedMessages,
+          source: 'cache',
+          message: 'Showing cached messages. Add ?refresh=true for latest.'
+        })
+      }
+    }
+    
+    // Get the conversation details
     const { data: conversation, error: convError } = await supabaseAdmin
       .from('conversations')
       .select('*')
@@ -105,56 +125,37 @@ export async function GET(req: NextRequest) {
       }, { status: 404 })
     }
     
-    console.log('Fetching messages for conversation:', conversation.id, 'Page:', page.name)
+    console.log('Fetching fresh messages from Facebook for conversation:', conversation.id)
     
     // Try to fetch messages from Facebook
-    const messagesUrl = `https://graph.facebook.com/v19.0/${conversation.facebook_conversation_id}/messages?fields=id,message,from,created_time&access_token=${page.access_token}`
-    
-    console.log('Fetching messages from Facebook...')
+    const messagesUrl = `https://graph.facebook.com/v19.0/${conversation.facebook_conversation_id}/messages?fields=id,message,from,created_time&limit=50&access_token=${page.access_token}`
     
     const response = await fetch(messagesUrl)
     const data = await response.json()
     
-    console.log('Facebook messages response:', JSON.stringify(data, null, 2))
-    
     if (data.error) {
       console.error('Facebook API Error:', data.error)
       
-      // If Facebook API fails, try to get messages from database
-      const { data: dbMessages } = await supabaseAdmin
+      // If Facebook API fails, return cached data if available
+      const { data: fallbackMessages } = await supabaseAdmin
         .from('messages')
         .select('*')
         .eq('conversation_id', conversationId)
         .order('created_at', { ascending: true })
       
-      if (dbMessages && dbMessages.length > 0) {
-        return NextResponse.json({ 
-          messages: dbMessages,
-          source: 'database',
-          message: 'Showing cached messages'
-        })
-      }
-      
-      // Return empty array with error message
       return NextResponse.json({ 
-        messages: [],
+        messages: fallbackMessages || [],
         error: `Facebook API: ${data.error.message}`,
-        suggestion: 'Make sure your page has the correct permissions.',
-        debug: {
-          conversationId: conversation.facebook_conversation_id,
-          pageId: page.facebook_page_id,
-          errorCode: data.error.code,
-          errorType: data.error.type
-        }
+        source: 'cache_fallback'
       })
     }
     
-    // Process and save messages
+    // Process and save messages with parallel processing
     const messages = []
     
     if (data.data && data.data.length > 0) {
-      for (const msg of data.data) {
-        // Save message to database
+      // Use Promise.all for parallel processing
+      const savePromises = data.data.map(async (msg: any) => {
         const { data: savedMsg } = await supabaseAdmin
           .from('messages')
           .upsert({
@@ -170,10 +171,11 @@ export async function GET(req: NextRequest) {
           .select()
           .single()
         
-        if (savedMsg) {
-          messages.push(savedMsg)
-        }
-      }
+        return savedMsg
+      })
+      
+      const results = await Promise.all(savePromises)
+      messages.push(...results.filter(Boolean))
     }
     
     // If no messages from Facebook, check database
@@ -202,9 +204,18 @@ export async function GET(req: NextRequest) {
     
   } catch (error) {
     console.error('Error in messages API:', error)
+    
+    // Return cached data on error
+    const { data: cachedMessages } = await supabaseAdmin
+      .from('messages')
+      .select('*')
+      .eq('conversation_id', conversationId)
+      .order('created_at', { ascending: true })
+    
     return NextResponse.json({ 
-      error: 'Failed to fetch messages',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 })
+      messages: cachedMessages || [],
+      error: 'Failed to fetch new messages',
+      source: 'cache_on_error'
+    })
   }
 }
