@@ -87,7 +87,7 @@ export async function GET(req: NextRequest) {
     
     if (data.data && data.data.length > 0) {
       // Use Promise.all for parallel processing
-      const savePromises = data.data.map(async (conv) => {
+      const savePromises = data.data.map(async (conv: any) => {
         const participant = conv.participants?.data?.find((p: any) => p.id !== page.facebook_page_id)
         
         if (participant) {
