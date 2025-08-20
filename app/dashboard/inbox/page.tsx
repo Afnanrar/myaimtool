@@ -35,6 +35,8 @@ export default function InboxPage() {
   useEffect(() => {
     if (!supabase || !selectedPage) return
 
+    console.log('Setting up real-time subscription for conversations:', conversations.map(c => c.id))
+
     // Subscribe to new messages in real-time
     const messagesSubscription = supabase
       .channel('messages')
@@ -43,8 +45,7 @@ export default function InboxPage() {
         {
           event: 'INSERT',
           schema: 'public',
-          table: 'messages',
-          filter: `conversation_id=in.(${conversations.map(c => c.id).join(',')})`
+          table: 'messages'
         },
         (payload: any) => {
           console.log('Real-time message received:', payload)
@@ -63,25 +64,28 @@ export default function InboxPage() {
           handleMessageUpdate(payload.new)
         }
       )
-      .subscribe()
+      .subscribe((status) => {
+        console.log('Real-time subscription status:', status)
+      })
 
     return () => {
+      console.log('Cleaning up real-time subscription')
       messagesSubscription.unsubscribe()
     }
   }, [supabase, selectedPage, conversations])
 
-  // Periodic refresh as fallback for real-time updates
+  // More frequent polling as fallback for real-time updates
   useEffect(() => {
     if (!selectedPage || conversations.length === 0) return
 
     const interval = setInterval(() => {
-      // Only refresh if no real-time updates have been received recently
+      // Check for new messages every 10 seconds as fallback
       const lastUpdate = Date.now() - (window as any).lastMessageUpdate || 0
-      if (lastUpdate > 30000) { // 30 seconds
-        console.log('Periodic refresh triggered - no real-time updates received')
-        loadConversations()
+      if (lastUpdate > 10000) { // 10 seconds
+        console.log('Polling for new messages - fallback to API calls')
+        checkForNewMessages()
       }
-    }, 30000) // Check every 30 seconds
+    }, 10000) // Check every 10 seconds
 
     return () => clearInterval(interval)
   }, [selectedPage, conversations])
@@ -247,6 +251,66 @@ export default function InboxPage() {
       setMessages(prev => prev.map(msg => 
         msg.id === updatedMessage.id ? updatedMessage : msg
       ))
+    }
+  }
+
+  const checkForNewMessages = async () => {
+    try {
+      if (!selectedPage || conversations.length === 0) return
+      
+      console.log('Checking for new messages via API...')
+      
+      let totalNewMessages = 0
+      
+      // Check each conversation for new messages
+      for (const conv of conversations) {
+        const response = await fetch(`/api/facebook/messages?conversationId=${conv.id}`)
+        const data = await response.json()
+        
+        if (response.ok && data.messages) {
+          const currentMessageCount = messageCache[conv.id]?.length || 0
+          const newMessageCount = data.messages.length
+          
+          if (newMessageCount > currentMessageCount) {
+            const newMessages = newMessageCount - currentMessageCount
+            totalNewMessages += newMessages
+            console.log(`Found ${newMessages} new messages in conversation ${conv.id}`)
+            
+            // Update cache with new messages
+            setMessageCache(prev => ({
+              ...prev,
+              [conv.id]: data.messages
+            }))
+            
+            // If this conversation is currently open, update the display
+            if (selectedConversation?.id === conv.id) {
+              setMessages(data.messages)
+            }
+            
+            // Update conversation list
+            setConversations(prev => prev.map(c => {
+              if (c.id === conv.id) {
+                return {
+                  ...c,
+                  last_message_time: data.messages[data.messages.length - 1]?.created_at || c.last_message_time
+                }
+              }
+              return c
+            }))
+            
+            // Mark that we found new messages
+            ;(window as any).lastMessageUpdate = Date.now()
+          }
+        }
+      }
+      
+      if (totalNewMessages > 0) {
+        setSuccessMessage(`Found ${totalNewMessages} new message${totalNewMessages > 1 ? 's' : ''}!`)
+        setTimeout(() => setSuccessMessage(''), 3000)
+      }
+      
+    } catch (error) {
+      console.error('Error checking for new messages:', error)
     }
   }
 
@@ -577,6 +641,14 @@ export default function InboxPage() {
               title="Refresh conversations"
             >
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+            <button
+              onClick={checkForNewMessages}
+              disabled={!selectedPage || conversations.length === 0}
+              className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50 bg-blue-50"
+              title="Check for new messages"
+            >
+              <RefreshCw className="h-4 w-4" />
             </button>
             <button
               onClick={() => {

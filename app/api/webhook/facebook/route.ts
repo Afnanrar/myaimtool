@@ -81,7 +81,6 @@ async function handleMessagingEvent(event: any, pageId: string) {
         sender_id: sender.id,
         message_text: message.text,
         is_from_page: false, // This is from customer
-        is_read: false, // Mark as unread
         created_at: new Date(timestamp * 1000).toISOString()
       })
       .select()
@@ -101,7 +100,13 @@ async function handleMessagingEvent(event: any, pageId: string) {
       })
       .eq('id', conversation.id)
 
-    console.log('Message saved successfully:', savedMessage)
+    console.log('Message saved successfully via webhook:', savedMessage)
+
+    // Trigger a database change to help with real-time updates
+    await supabaseAdmin
+      .from('messages')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', savedMessage.id)
 
   } catch (error) {
     console.error('Error handling messaging event:', error)
