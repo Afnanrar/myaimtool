@@ -9,9 +9,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Page ID required' }, { status: 400 })
   }
   
+  if (!supabaseAdmin) {
+    return NextResponse.json({ error: 'Database not configured' }, { status: 500 })
+  }
+  
   try {
     // Get all conversations for this page
-    const { data: conversations } = await supabaseAdmin
+    const { data: conversations } = await supabaseAdmin!
       .from('conversations')
       .select('participant_id, last_message_time')
       .eq('page_id', pageId)
