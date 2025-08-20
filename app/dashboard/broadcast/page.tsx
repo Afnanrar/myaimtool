@@ -124,8 +124,8 @@ export default function BroadcastPage() {
       } else {
         setError(data.error || 'Failed to send broadcast')
       }
-    } catch (error) {
-      setError('Failed to send broadcast: ' + error.message)
+    } catch (error: any) {
+      setError('Failed to send broadcast: ' + (error.message || 'Unknown error'))
     } finally {
       setSending(false)
     }
