@@ -132,6 +132,29 @@ export default function InboxPage() {
     })
   }
 
+  const getUnreadCount = (conversationId: string) => {
+    const messages = messageCache[conversationId] || []
+    // Count messages that are not from the page (i.e., from customers)
+    // and haven't been marked as read
+    return messages.filter(msg => !msg.is_from_page && !msg.is_read).length
+  }
+
+  const markMessagesAsRead = (conversationId: string) => {
+    // Mark all customer messages as read in the cache
+    setMessageCache(prev => {
+      const conversationMessages = prev[conversationId] || []
+      const updatedMessages = conversationMessages.map(msg => ({
+        ...msg,
+        is_read: msg.is_from_page ? msg.is_read : true // Mark customer messages as read
+      }))
+      
+      return {
+        ...prev,
+        [conversationId]: updatedMessages
+      }
+    })
+  }
+
   const loadMessages = async (conversation: any) => {
     if (!conversation || !selectedPage) return
     
@@ -199,6 +222,8 @@ export default function InboxPage() {
           [conversation.id]: data.messages
         }))
         setError('')
+        // Mark messages as read when loading
+        markMessagesAsRead(conversation.id)
       } else {
         setMessages([])
         // Cache empty messages array
@@ -413,6 +438,19 @@ export default function InboxPage() {
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
           </div>
+          
+          {/* Total Unread Count */}
+          {(() => {
+            const totalUnread = conversations.reduce((total, conv) => total + getUnreadCount(conv.id), 0)
+            return totalUnread > 0 ? (
+              <div className="mt-3 flex items-center justify-between">
+                <span className="text-sm text-gray-600">Total unread:</span>
+                <span className="px-2 py-1 bg-red-500 text-white text-xs rounded-full font-medium">
+                  {totalUnread} {totalUnread === 1 ? 'message' : 'messages'}
+                </span>
+              </div>
+            ) : null
+          })()}
         </div>
 
         {/* Conversations List */}
@@ -463,6 +501,8 @@ export default function InboxPage() {
                     if (messageCache[conv.id]) {
                       setMessages(messageCache[conv.id])
                       console.log('Messages loaded from cache for:', conv.id)
+                      // Mark messages as read when opening conversation
+                      markMessagesAsRead(conv.id)
                     } else {
                       // Load messages in background if not cached
                       loadMessagesSilently(conv)
@@ -482,11 +522,14 @@ export default function InboxPage() {
                     <p className="text-sm text-gray-500 truncate">
                       Click to view conversation
                     </p>
-                    {conv.unread_count > 0 && (
-                      <span className="inline-block px-2 py-1 bg-blue-500 text-white text-xs rounded-full mt-1">
-                        {conv.unread_count} new
-                      </span>
-                    )}
+                    {(() => {
+                      const unreadCount = getUnreadCount(conv.id)
+                      return unreadCount > 0 ? (
+                        <span className="inline-block px-2 py-1 bg-red-500 text-white text-xs rounded-full mt-1 font-medium">
+                          {unreadCount} {unreadCount === 1 ? 'unread' : 'unread'}
+                        </span>
+                      ) : null
+                    })()}
                   </div>
                   <div className="text-xs text-gray-400">
                     {conv.last_message_time && 
