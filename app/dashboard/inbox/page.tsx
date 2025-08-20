@@ -129,13 +129,35 @@ export default function InboxPage() {
       } catch (error) {
         console.error('Error in real-time polling:', error)
       }
-    }, 5000) // Check every 5 seconds for active conversation
+    }, 2000) // Check every 2 seconds for active conversation
+
+    // Also do an immediate sync when conversation is selected
+    const immediateSync = async () => {
+      try {
+        const syncResponse = await fetch(`/api/facebook/messages/sync?conversationId=${selectedConversation.id}&pageId=${selectedPage.id}`)
+        const syncData = await syncResponse.json()
+        
+        if (syncResponse.ok && syncData.newMessages && syncData.newMessages.length > 0) {
+          console.log('Immediate sync found new messages:', syncData.newMessages.length)
+          // Reload messages to show new ones
+          loadMessagesSilently(selectedConversation, true)
+        }
+      } catch (error) {
+        console.error('Immediate sync error:', error)
+      }
+    }
+
+    // Run immediate sync after a short delay
+    const immediateTimeout = setTimeout(immediateSync, 1000)
 
     setRealtimeInterval(interval)
 
     return () => {
       if (interval) {
         clearInterval(interval)
+      }
+      if (immediateTimeout) {
+        clearTimeout(immediateTimeout)
       }
     }
   }, [selectedPage, selectedConversation])
@@ -175,7 +197,7 @@ export default function InboxPage() {
       } catch (error) {
         console.error('Error in background sync:', error)
       }
-    }, 10000) // Check every 10 seconds
+    }, 5000) // Check every 5 seconds
 
     return () => clearInterval(interval)
   }, [selectedPage, conversations])
@@ -753,7 +775,7 @@ export default function InboxPage() {
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1">
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                <span>Auto-Sync</span>
+                <span>Fast Sync</span>
               </div>
               {lastRefreshed && (
                 <span className="flex items-center">
@@ -845,6 +867,22 @@ export default function InboxPage() {
                       // Load messages in background if not cached
                       loadMessagesSilently(conv)
                     }
+                    
+                    // Immediately sync for new messages when switching
+                    setTimeout(() => {
+                      if (selectedPage) {
+                        fetch(`/api/facebook/messages/sync?conversationId=${conv.id}&pageId=${selectedPage.id}`)
+                          .then(response => response.json())
+                          .then(data => {
+                            if (data.newMessages && data.newMessages.length > 0) {
+                              console.log('Immediate sync found new messages:', data.newMessages.length)
+                              // Reload messages to show new ones
+                              loadMessagesSilently(conv, true)
+                            }
+                          })
+                          .catch(error => console.error('Immediate sync error:', error))
+                      }
+                    }, 500) // Small delay to ensure conversation is set
                   }}
                   className={`w-full p-4 hover:bg-gray-50 transition-colors flex items-start gap-3 ${
                     selectedConversation?.id === conv.id ? 'bg-blue-50' : ''
@@ -894,7 +932,7 @@ export default function InboxPage() {
                         <p className="text-sm text-gray-500">Facebook Messenger</p>
                         <div className="flex items-center gap-1">
                           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                          <span className="text-xs text-green-600">Auto-Sync Active</span>
+                          <span className="text-xs text-green-600">Fast Sync (2s)</span>
                         </div>
                       </div>
                   </div>
