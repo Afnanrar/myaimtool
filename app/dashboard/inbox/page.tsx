@@ -8,7 +8,9 @@ export default function InboxPage() {
   const [pages, setPages] = useState<any[]>([])
   const [conversations, setConversations] = useState<any[]>([])
   const [selectedConversation, setSelectedConversation] = useState<any>(null)
+  const [messages, setMessages] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
+  const [loadingMessages, setLoadingMessages] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [error, setError] = useState('')
@@ -101,6 +103,41 @@ export default function InboxPage() {
     }
   }
 
+  const loadMessages = async (conversation: any) => {
+    if (!conversation || !selectedPage) return
+    
+    setLoadingMessages(true)
+    setError('')
+    
+    try {
+      // Load messages for the selected conversation
+      const response = await fetch(`/api/facebook/messages?conversationId=${conversation.id}`)
+      const data = await response.json()
+      
+      console.log('Messages response:', data)
+      
+      if (!response.ok) {
+        setError(data.error || 'Failed to load messages')
+        setMessages([])
+        return
+      }
+      
+      if (data.messages && data.messages.length > 0) {
+        setMessages(data.messages)
+        setError('')
+      } else {
+        setMessages([])
+        setError('No messages found in this conversation.')
+      }
+    } catch (error: any) {
+      console.error('Error loading messages:', error)
+      setError('Failed to load messages: ' + (error.message || 'Unknown error'))
+      setMessages([])
+    } finally {
+      setLoadingMessages(false)
+    }
+  }
+
   const filteredConversations = conversations.filter(conv =>
     conv.participant_name?.toLowerCase().includes(searchTerm.toLowerCase())
   )
@@ -163,6 +200,8 @@ export default function InboxPage() {
                         setSelectedPage(page)
                         setDropdownOpen(false)
                         setConversations([]) // Clear conversations when switching pages
+                        setSelectedConversation(null) // Clear selected conversation
+                        setMessages([]) // Clear messages
                       }}
                       className={`w-full flex items-center px-4 py-3 hover:bg-gray-50 transition-colors ${
                         selectedPage?.id === page.id ? 'bg-blue-50' : ''
@@ -248,7 +287,10 @@ export default function InboxPage() {
               {filteredConversations.map((conv) => (
                 <button
                   key={conv.id}
-                  onClick={() => setSelectedConversation(conv)}
+                  onClick={() => {
+                    setSelectedConversation(conv)
+                    loadMessages(conv)
+                  }}
                   className={`w-full p-4 hover:bg-gray-50 transition-colors flex items-start gap-3 ${
                     selectedConversation?.id === conv.id ? 'bg-blue-50' : ''
                   }`}
@@ -299,9 +341,51 @@ export default function InboxPage() {
               </div>
             </div>
             <div className="flex-1 p-4 overflow-y-auto">
-              <div className="text-center text-gray-500">
-                <p>Messages will appear here</p>
-              </div>
+              {loadingMessages ? (
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
+                    <p className="text-gray-500">Loading messages...</p>
+                  </div>
+                </div>
+              ) : error ? (
+                <div className="text-center text-gray-500">
+                  <p className="text-red-500">{error}</p>
+                  <button
+                    onClick={() => loadMessages(selectedConversation)}
+                    className="mt-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : messages.length === 0 ? (
+                <div className="text-center text-gray-500">
+                  <p>No messages found</p>
+                  <p className="text-sm mt-1">Messages will appear here when loaded</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {messages.map((message) => (
+                    <div
+                      key={message.id}
+                      className={`flex ${message.is_from_page ? 'justify-end' : 'justify-start'}`}
+                    >
+                      <div
+                        className={`max-w-xs px-4 py-2 rounded-lg ${
+                          message.is_from_page
+                            ? 'bg-blue-500 text-white'
+                            : 'bg-gray-200 text-gray-800'
+                        }`}
+                      >
+                        <p className="text-sm">{message.message_text}</p>
+                        <p className="text-xs opacity-75 mt-1">
+                          {new Date(message.created_at).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="p-4 border-t">
               <div className="flex gap-2">
