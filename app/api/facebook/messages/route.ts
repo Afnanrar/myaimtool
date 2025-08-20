@@ -156,7 +156,7 @@ export async function GET(req: NextRequest) {
     if (data.data && data.data.length > 0) {
       // Use Promise.all for parallel processing
       const savePromises = data.data.map(async (msg: any) => {
-        const { data: savedMsg } = await supabaseAdmin
+        const { data: savedMsg } = await supabaseAdmin!
           .from('messages')
           .upsert({
             conversation_id: conversationId,
