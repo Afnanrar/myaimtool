@@ -31,6 +31,34 @@ export default function InboxPage() {
     loadPages()
   }, [])
 
+  // Clean up placeholder conversations when conversations change
+  useEffect(() => {
+    if (conversations.length > 0 && selectedPage) {
+      const realConversations = conversations.filter((conv: any) => {
+        if (conv.participant_name === 'Facebook User' || 
+            conv.participant_name === 'Unknown User' ||
+            conv.participant_name === 'Test User') {
+          return false
+        }
+        
+        if (!conv.participant_id || !conv.facebook_conversation_id) {
+          return false
+        }
+        
+        if (conv.page_id !== selectedPage.id) {
+          return false
+        }
+        
+        return true
+      })
+      
+      if (realConversations.length !== conversations.length) {
+        console.log(`Cleaned up ${conversations.length - realConversations.length} placeholder conversations`)
+        setConversations(realConversations)
+      }
+    }
+  }, [conversations.length, selectedPage])
+
 
 
   useEffect(() => {
@@ -124,12 +152,33 @@ export default function InboxPage() {
                 [selectedConversation.id]: messagesData.messages
               }))
               
-              // Update conversation list
-              setConversations(prev => prev.map(conv => 
-                conv.id === selectedConversation.id 
-                  ? { ...conv, last_message_time: new Date().toISOString() }
-                  : conv
-              ))
+              // Update conversation list and filter out placeholders
+              setConversations(prev => {
+                const updated = prev.map(conv => 
+                  conv.id === selectedConversation.id 
+                    ? { ...conv, last_message_time: new Date().toISOString() }
+                    : conv
+                )
+                
+                // Filter out placeholder conversations
+                return updated.filter((conv: any) => {
+                  if (conv.participant_name === 'Facebook User' || 
+                      conv.participant_name === 'Unknown User' ||
+                      conv.participant_name === 'Test User') {
+                    return false
+                  }
+                  
+                  if (!conv.participant_id || !conv.facebook_conversation_id) {
+                    return false
+                  }
+                  
+                  if (conv.page_id !== selectedPage.id) {
+                    return false
+                  }
+                  
+                  return true
+                })
+              })
               
               // Scroll to bottom when new messages arrive
               setTimeout(() => scrollToBottom(), 100)
@@ -191,12 +240,33 @@ export default function InboxPage() {
             if (syncResponse.ok && syncData.newMessages && syncData.newMessages.length > 0) {
               console.log(`Background sync: Found ${syncData.newMessages.length} new messages in conversation ${conversation.id}`)
               
-              // Update conversation list to show new message indicator
-              setConversations(prev => prev.map(conv => 
-                conv.id === conversation.id 
-                  ? { ...conv, last_message_time: new Date().toISOString() }
-                  : conv
-              ))
+              // Update conversation list to show new message indicator and filter placeholders
+              setConversations(prev => {
+                const updated = prev.map(conv => 
+                  conv.id === conversation.id 
+                    ? { ...conv, last_message_time: new Date().toISOString() }
+                    : conv
+                )
+                
+                // Filter out placeholder conversations
+                return updated.filter((conv: any) => {
+                  if (conv.participant_name === 'Facebook User' || 
+                      conv.participant_name === 'Unknown User' ||
+                      conv.participant_name === 'Test User') {
+                    return false
+                  }
+                  
+                  if (!conv.participant_id || !conv.facebook_conversation_id) {
+                    return false
+                  }
+                  
+                  if (conv.page_id !== selectedPage.id) {
+                    return false
+                  }
+                  
+                  return true
+                })
+              })
             }
           } catch (error) {
             console.error(`Error syncing conversation ${conversation.id}:`, error)
@@ -279,15 +349,39 @@ export default function InboxPage() {
       }
       
       if (data.conversations && data.conversations.length > 0) {
-        setConversations(data.conversations)
+        // Filter out placeholder conversations and ensure only real conversations
+        const realConversations = data.conversations.filter((conv: any) => {
+          // Remove conversations with placeholder names
+          if (conv.participant_name === 'Facebook User' || 
+              conv.participant_name === 'Unknown User' ||
+              conv.participant_name === 'Test User') {
+            return false
+          }
+          
+          // Remove conversations without proper participant information
+          if (!conv.participant_id || !conv.facebook_conversation_id) {
+            return false
+          }
+          
+          // Ensure conversation belongs to the current page
+          if (conv.page_id !== selectedPage.id) {
+            return false
+          }
+          
+          return true
+        })
+        
+        console.log(`Filtered conversations: ${data.conversations.length} -> ${realConversations.length} real conversations`)
+        
+        setConversations(realConversations)
         setError('')
         
         if (forceRefresh) {
           setLastRefreshed(new Date())
         }
         
-        // Preload messages for all conversations in background
-        preloadMessages(data.conversations)
+        // Preload messages for real conversations only
+        preloadMessages(realConversations)
       } else {
         setConversations([])
         if (!data.error) {
