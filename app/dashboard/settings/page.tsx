@@ -38,8 +38,8 @@ export default function SettingsPage() {
         setMessage('No pages found. Make sure you have admin access to at least one Facebook Page.')
         setDebugInfo(data)
       }
-    } catch (error) {
-      setMessage('Failed to load pages: ' + error.message)
+    } catch (error: any) {
+      setMessage('Failed to load pages: ' + (error.message || 'Unknown error'))
     } finally {
       setLoading(false)
     }
@@ -59,7 +59,7 @@ export default function SettingsPage() {
       } else {
         setMessage('No pages found. Make sure you have admin access to at least one Facebook Page.')
       }
-    } catch (error) {
+    } catch (error: any) {
       setMessage('Failed to connect pages. Please try again.')
     } finally {
       setLoading(false)
