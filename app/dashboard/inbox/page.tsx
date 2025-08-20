@@ -31,6 +31,20 @@ export default function InboxPage() {
     loadPages()
   }, [])
 
+  // Clean up duplicate conversations when component mounts
+  useEffect(() => {
+    if (conversations.length > 0) {
+      const uniqueConversations = conversations.filter((conv: any, index: number, self: any[]) => 
+        index === self.findIndex((c: any) => c.facebook_conversation_id === conv.facebook_conversation_id)
+      )
+      
+      if (uniqueConversations.length !== conversations.length) {
+        console.log(`Cleaned up ${conversations.length - uniqueConversations.length} duplicate conversations`)
+        setConversations(uniqueConversations)
+      }
+    }
+  }, [conversations.length])
+
   useEffect(() => {
     if (selectedPage) {
       loadConversations()
@@ -122,12 +136,19 @@ export default function InboxPage() {
                 [selectedConversation.id]: messagesData.messages
               }))
               
-              // Update conversation list
-              setConversations(prev => prev.map(conv => 
-                conv.id === selectedConversation.id 
-                  ? { ...conv, last_message_time: new Date().toISOString() }
-                  : conv
-              ))
+              // Update conversation list and remove duplicates
+              setConversations(prev => {
+                const updated = prev.map(conv => 
+                  conv.id === selectedConversation.id 
+                    ? { ...conv, last_message_time: new Date().toISOString() }
+                    : conv
+                )
+                
+                // Remove duplicates after update
+                return updated.filter((conv: any, index: number, self: any[]) => 
+                  index === self.findIndex((c: any) => c.facebook_conversation_id === conv.facebook_conversation_id)
+                )
+              })
               
               // Scroll to bottom when new messages arrive
               setTimeout(() => scrollToBottom(), 100)
@@ -189,12 +210,19 @@ export default function InboxPage() {
             if (syncResponse.ok && syncData.newMessages && syncData.newMessages.length > 0) {
               console.log(`Background sync: Found ${syncData.newMessages.length} new messages in conversation ${conversation.id}`)
               
-              // Update conversation list to show new message indicator
-              setConversations(prev => prev.map(conv => 
-                conv.id === conversation.id 
-                  ? { ...conv, last_message_time: new Date().toISOString() }
-                  : conv
-              ))
+              // Update conversation list to show new message indicator and remove duplicates
+              setConversations(prev => {
+                const updated = prev.map(conv => 
+                  conv.id === conversation.id 
+                    ? { ...conv, last_message_time: new Date().toISOString() }
+                    : conv
+                )
+                
+                // Remove duplicates after update
+                return updated.filter((conv: any, index: number, self: any[]) => 
+                  index === self.findIndex((c: any) => c.facebook_conversation_id === conv.facebook_conversation_id)
+                )
+              })
             }
           } catch (error) {
             console.error(`Error syncing conversation ${conversation.id}:`, error)
@@ -277,15 +305,41 @@ export default function InboxPage() {
       }
       
       if (data.conversations && data.conversations.length > 0) {
-        setConversations(data.conversations)
+        // Remove duplicate conversations based on facebook_conversation_id
+        const uniqueConversations = data.conversations.filter((conv: any, index: number, self: any[]) => 
+          index === self.findIndex((c: any) => c.facebook_conversation_id === conv.facebook_conversation_id)
+        )
+        
+        // Also remove duplicates based on participant_id + page_id combination
+        const finalConversations = uniqueConversations.filter((conv: any, index: number, self: any[]) => 
+          index === self.findIndex((c: any) => 
+            c.participant_id === conv.participant_id && 
+            c.page_id === conv.page_id
+          )
+        )
+        
+        console.log(`Loaded ${data.conversations.length} conversations, deduplicated to ${finalConversations.length}`)
+        
+        // Debug: Log conversation details to identify duplicates
+        finalConversations.forEach((conv: any, index: number) => {
+          console.log(`Conversation ${index + 1}:`, {
+            id: conv.id,
+            facebook_conversation_id: conv.facebook_conversation_id,
+            participant_id: conv.participant_id,
+            participant_name: conv.participant_name,
+            page_id: conv.page_id
+          })
+        })
+        
+        setConversations(finalConversations)
         setError('')
         
         if (forceRefresh) {
           setLastRefreshed(new Date())
         }
         
-        // Preload messages for all conversations in background
-        preloadMessages(data.conversations)
+        // Preload messages for deduplicated conversations
+        preloadMessages(finalConversations)
       } else {
         setConversations([])
         if (!data.error) {
@@ -804,6 +858,9 @@ export default function InboxPage() {
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                 <span>Fast Sync</span>
               </div>
+              <span className="text-blue-600 font-medium">
+                Conversations: {conversations.length}
+              </span>
               {lastRefreshed && (
                 <span className="flex items-center">
                   <Clock className="h-3 w-3 mr-1" />
