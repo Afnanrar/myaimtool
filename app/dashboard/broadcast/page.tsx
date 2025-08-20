@@ -152,6 +152,8 @@ export default function BroadcastPage() {
   }
 
   const confirmAndSend = async () => {
+    if (!selectedPage) return
+    
     setShowPreflightSummary(false)
     setSending(true)
     setError('')
