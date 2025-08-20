@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
 
     // Process and save messages
     const newMessages = []
-    const existingMessageIds = new Set()
+    let existingMessageIds = new Set()
 
     if (data.data && data.data.length > 0) {
       // Get existing message IDs to avoid duplicates
