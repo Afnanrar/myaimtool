@@ -3,21 +3,16 @@ import { supabaseAdmin } from '@/lib/supabase'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
-  let pageId = searchParams.get('pageId')
+  const pageId = searchParams.get('pageId')
+  const forceRefresh = searchParams.get('refresh') === 'true'
   
   if (!pageId) {
     return NextResponse.json({ error: 'Page ID is required' }, { status: 400 })
   }
   
-  if (!supabaseAdmin) {
-    return NextResponse.json({ error: 'Database not configured' }, { status: 500 })
-  }
-
   try {
-    // First, check if this is a database ID or Facebook page ID
+    // Get page from database
     let page = null
-    
-    // Try to find by database ID first
     const { data: pageById } = await supabaseAdmin
       .from('pages')
       .select('*')
@@ -27,62 +22,71 @@ export async function GET(req: NextRequest) {
     if (pageById) {
       page = pageById
     } else {
-      // Try to find by Facebook page ID
       const { data: pageByFbId } = await supabaseAdmin
         .from('pages')
         .select('*')
         .eq('facebook_page_id', pageId)
         .single()
-      
       page = pageByFbId
     }
     
     if (!page) {
-      return NextResponse.json({ 
-        error: 'Page not found in database',
-        pageId: pageId 
-      }, { status: 404 })
+      return NextResponse.json({ error: 'Page not found' }, { status: 404 })
     }
     
-    console.log('Found page:', page.name, 'FB ID:', page.facebook_page_id)
+    // First, try to load from database cache (instant)
+    if (!forceRefresh) {
+      const { data: cachedConversations } = await supabaseAdmin
+        .from('conversations')
+        .select('*')
+        .eq('page_id', page.id)
+        .order('last_message_time', { ascending: false })
+        .limit(50)
+      
+      if (cachedConversations && cachedConversations.length > 0) {
+        // Return cached data immediately
+        return NextResponse.json({ 
+          conversations: cachedConversations,
+          source: 'cache',
+          message: 'Showing cached conversations. Click refresh for latest.'
+        })
+      }
+    }
     
-    // Try to fetch conversations from Facebook
-    const conversationsUrl = `https://graph.facebook.com/v19.0/${page.facebook_page_id}/conversations?fields=participants,senders,can_reply,is_subscribed,unread_count,updated_time&access_token=${page.access_token}`
+    // Fetch fresh data from Facebook
+    console.log('Fetching fresh conversations from Facebook...')
     
-    console.log('Fetching conversations from Facebook...')
+    const conversationsUrl = `https://graph.facebook.com/v19.0/${page.facebook_page_id}/conversations?fields=participants,senders,updated_time,unread_count&limit=25&access_token=${page.access_token}`
     
     const response = await fetch(conversationsUrl)
     const data = await response.json()
     
-    console.log('Facebook response:', JSON.stringify(data, null, 2))
-    
     if (data.error) {
       console.error('Facebook API Error:', data.error)
       
-      // Return empty array with error message
+      // Still return cached data if available
+      const { data: fallbackConversations } = await supabaseAdmin
+        .from('conversations')
+        .select('*')
+        .eq('page_id', page.id)
+        .order('last_message_time', { ascending: false })
+      
       return NextResponse.json({ 
-        conversations: [],
+        conversations: fallbackConversations || [],
         error: `Facebook API: ${data.error.message}`,
-        suggestion: 'Make sure your page has the correct permissions and has received messages recently.',
-        debug: {
-          pageId: page.facebook_page_id,
-          pageName: page.name,
-          errorCode: data.error.code,
-          errorType: data.error.type
-        }
+        source: 'cache_fallback'
       })
     }
     
-    // Process conversations
+    // Process and save conversations
     const conversations = []
     
     if (data.data && data.data.length > 0) {
-      for (const conv of data.data) {
-        // Find the participant who is not the page
+      // Use Promise.all for parallel processing
+      const savePromises = data.data.map(async (conv) => {
         const participant = conv.participants?.data?.find((p: any) => p.id !== page.facebook_page_id)
         
         if (participant) {
-          // Save to database
           const { data: savedConv } = await supabaseAdmin
             .from('conversations')
             .upsert({
@@ -98,42 +102,36 @@ export async function GET(req: NextRequest) {
             .select()
             .single()
           
-          if (savedConv) {
-            conversations.push(savedConv)
-          }
+          return savedConv
         }
-      }
-    }
-    
-    // If no conversations from Facebook, check database
-    if (conversations.length === 0) {
-      const { data: dbConversations } = await supabaseAdmin
-        .from('conversations')
-        .select('*')
-        .eq('page_id', page.id)
-        .order('last_message_time', { ascending: false })
+        return null
+      })
       
-      if (dbConversations && dbConversations.length > 0) {
-        return NextResponse.json({ 
-          conversations: dbConversations,
-          source: 'database',
-          message: 'Showing cached conversations'
-        })
-      }
+      const results = await Promise.all(savePromises)
+      conversations.push(...results.filter(Boolean))
     }
     
     return NextResponse.json({ 
       conversations,
       totalFound: conversations.length,
-      pageName: page.name,
-      source: 'facebook'
+      source: 'facebook',
+      message: 'Fresh data loaded'
     })
     
   } catch (error) {
     console.error('Error in conversations API:', error)
+    
+    // Return cached data on error
+    const { data: cachedConversations } = await supabaseAdmin
+      .from('conversations')
+      .select('*')
+      .eq('page_id', page.id)
+      .order('last_message_time', { ascending: false })
+    
     return NextResponse.json({ 
-      error: 'Failed to fetch conversations',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 })
+      conversations: cachedConversations || [],
+      error: 'Failed to fetch new conversations',
+      source: 'cache_on_error'
+    })
   }
 }

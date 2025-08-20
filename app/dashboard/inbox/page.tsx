@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { ChevronDown, MessageSquare, Search, User } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { ChevronDown, MessageSquare, Search, User, Clock } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
 export default function InboxPage() {
@@ -11,6 +11,7 @@ export default function InboxPage() {
   const [selectedConversation, setSelectedConversation] = useState<any>(null)
   const [messages, setMessages] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [sendingMessage, setSendingMessage] = useState(false)
   const [newMessageText, setNewMessageText] = useState('')
@@ -20,6 +21,7 @@ export default function InboxPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [error, setError] = useState('')
   const [loadingPages, setLoadingPages] = useState(true)
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null)
 
   useEffect(() => {
     loadPages()
@@ -126,28 +128,25 @@ export default function InboxPage() {
     }
   }
 
-  const loadConversations = async () => {
+  const loadConversations = useCallback(async (forceRefresh = false) => {
     if (!selectedPage) return
     
-    setLoading(true)
+    if (forceRefresh) {
+      setRefreshing(true)
+    } else {
+      setLoading(true)
+    }
     setError('')
     
     try {
-      // Use the page's ID to fetch conversations
       const pageId = selectedPage.id || selectedPage.facebook_page_id
-      const response = await fetch(`/api/facebook/conversations?pageId=${pageId}`)
+      const url = `/api/facebook/conversations?pageId=${pageId}${forceRefresh ? '&refresh=true' : ''}`
+      
+      const response = await fetch(url)
       const data = await response.json()
       
-      console.log('Conversations response:', data)
-      
-      if (!response.ok) {
+      if (!response.ok && !data.conversations) {
         setError(data.error || 'Failed to load conversations')
-        
-        // Show more details about the error
-        if (data.details) {
-          console.error('Error details:', data.details)
-        }
-        
         setConversations([])
         return
       }
@@ -156,19 +155,34 @@ export default function InboxPage() {
         setConversations(data.conversations)
         setError('')
         
+        if (forceRefresh) {
+          setLastRefreshed(new Date())
+        }
+        
         // Preload messages for all conversations in background
         preloadMessages(data.conversations)
       } else {
         setConversations([])
-        setError('No conversations found. Messages will appear here when customers message your page.')
+        if (!data.error) {
+          setError('No conversations found. Messages will appear here when customers message your page.')
+        }
       }
+      
+      // Show source of data
+      if (data.source === 'cache') {
+        console.log('Loaded from cache')
+      } else if (data.source === 'facebook') {
+        console.log('Loaded fresh data from Facebook')
+      }
+      
     } catch (error: any) {
       console.error('Error loading conversations:', error)
       setError('Failed to load conversations: ' + (error.message || 'Unknown error'))
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
-  }
+  }, [selectedPage])
 
   const preloadMessages = async (conversations: any[]) => {
     // Preload messages for all conversations in background
@@ -614,13 +628,19 @@ export default function InboxPage() {
             )}
           </div>
           
-          {/* Debug info */}
-          <div className="mt-2 text-xs text-gray-500">
-            Pages loaded: {pages.length} | Selected: {selectedPage ? 'Yes' : 'No'}
+          {/* Status bar */}
+          <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
+            <span>Pages loaded: {pages.length} | Selected: {selectedPage ? 'Yes' : 'No'}</span>
+            {lastRefreshed && (
+              <span className="flex items-center">
+                <Clock className="h-3 w-3 mr-1" />
+                {lastRefreshed.toLocaleTimeString()}
+              </span>
+            )}
           </div>
         </div>
 
-        {/* Search */}
+        {/* Search and Refresh */}
         <div className="p-4 border-b">
           <div className="flex gap-2">
             <div className="flex-1 relative">
@@ -634,6 +654,14 @@ export default function InboxPage() {
                 disabled={!selectedPage}
               />
             </div>
+            <button
+              onClick={() => loadConversations(true)}
+              disabled={refreshing || !selectedPage}
+              className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
+              title="Refresh conversations"
+            >
+              <div className={`w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full ${refreshing ? 'animate-spin' : ''}`}></div>
+            </button>
           </div>
         </div>
 
@@ -646,7 +674,7 @@ export default function InboxPage() {
                 Go to settings to connect a page
               </a>
             </div>
-          ) : loading ? (
+          ) : loading && conversations.length === 0 ? (
             <div className="flex items-center justify-center py-8">
               <div className="text-gray-500">Loading conversations...</div>
             </div>
@@ -656,10 +684,10 @@ export default function InboxPage() {
                 <p className="text-sm text-yellow-800">{error}</p>
               </div>
               <button
-                onClick={loadConversations}
+                onClick={() => loadConversations(true)}
                 className="mt-4 w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
               >
-                Try Again
+                Refresh Conversations
               </button>
             </div>
           ) : filteredConversations.length === 0 ? (
@@ -667,7 +695,7 @@ export default function InboxPage() {
               <MessageSquare className="h-12 w-12 text-gray-300 mx-auto mb-3" />
               <p className="text-gray-500">No conversations yet</p>
               <p className="text-sm text-gray-400 mt-1 px-4">
-                {searchTerm ? 'Try a different search' : 'When people message your page, they will appear here'}
+                {searchTerm ? 'Try a different search' : 'Click refresh to check for new messages'}
               </p>
             </div>
           ) : (
