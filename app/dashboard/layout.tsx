@@ -1,7 +1,6 @@
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
 import Sidebar from '@/components/dashboard/Sidebar'
-import { verifyAuth } from '@/lib/auth'
 
 export default async function DashboardLayout({
   children,
@@ -14,16 +13,10 @@ export default async function DashboardLayout({
     redirect('/login')
   }
   
-  const auth = await verifyAuth(token.value)
-  
-  if (!auth) {
-    redirect('/login')
-  }
-  
   return (
     <div className="flex h-screen bg-gray-50">
-      <Sidebar userId={auth.userId} />
-      <main className="flex-1 overflow-y-auto">
+      <Sidebar userId={token.value} />
+      <main className="flex-1 overflow-y-auto bg-gray-50">
         {children}
       </main>
     </div>

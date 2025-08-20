@@ -2,6 +2,52 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Ensure text is always visible */
+* {
+  color: inherit;
+}
+
+/* Default text colors for common elements */
+h1, h2, h3, h4, h5, h6 {
+  color: rgb(17 24 39); /* gray-900 */
+}
+
+p {
+  color: rgb(55 65 81); /* gray-700 */
+}
+
+/* Fix for any remaining white text issues */
+.text-white {
+  color: white !important;
+}
+
+/* Ensure inputs have proper text color */
+input, textarea, select {
+  color: rgb(17 24 39); /* gray-900 */
+}
+
+input::placeholder, textarea::placeholder {
+  color: rgb(156 163 175); /* gray-400 */
+}
+
+/* Ensure buttons have proper text colors */
+button {
+  color: inherit;
+}
+
+/* Fix for any dark text on dark backgrounds */
+.bg-gray-900 * {
+  color: white;
+}
+
+.bg-gray-900 .text-gray-300 {
+  color: rgb(209 213 219) !important;
+}
+
+.bg-gray-900 .text-gray-400 {
+  color: rgb(156 163 175) !important;
+}
+
 :root {
   --foreground-rgb: 0, 0, 0;
   --background-start-rgb: 214, 219, 220;

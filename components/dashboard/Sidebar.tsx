@@ -26,7 +26,6 @@ export default function Sidebar({ userId }: { userId: string }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   
   const handleLogout = async () => {
-    // Clear auth cookie
     await fetch('/api/auth/logout', { method: 'POST' })
     router.push('/login')
   }
@@ -40,9 +39,9 @@ export default function Sidebar({ userId }: { userId: string }) {
           className="p-2 rounded-md bg-white shadow-md"
         >
           {mobileMenuOpen ? (
-            <X className="h-6 w-6" />
+            <X className="h-6 w-6 text-gray-900" />
           ) : (
-            <Menu className="h-6 w-6" />
+            <Menu className="h-6 w-6 text-gray-900" />
           )}
         </button>
       </div>
@@ -52,11 +51,11 @@ export default function Sidebar({ userId }: { userId: string }) {
         fixed lg:static inset-y-0 left-0 z-40
         transform ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
         lg:translate-x-0 transition-transform duration-200 ease-in-out
-        w-64 bg-gray-900 text-white
+        w-64 bg-gray-900
       `}>
         <div className="flex flex-col h-full">
-          <div className="p-4">
-            <h2 className="text-xl font-bold">FB Messenger Tool</h2>
+          <div className="p-4 border-b border-gray-800">
+            <h2 className="text-xl font-bold text-white">FB Messenger Tool</h2>
           </div>
           
           <nav className="flex-1 px-2 py-4 space-y-1">
@@ -67,7 +66,7 @@ export default function Sidebar({ userId }: { userId: string }) {
                   key={item.name}
                   href={item.href}
                   className={`
-                    flex items-center px-4 py-2 text-sm font-medium rounded-md
+                    flex items-center px-4 py-2 text-sm font-medium rounded-md transition-colors
                     ${isActive
                       ? 'bg-gray-800 text-white'
                       : 'text-gray-300 hover:bg-gray-700 hover:text-white'
@@ -85,7 +84,7 @@ export default function Sidebar({ userId }: { userId: string }) {
           <div className="p-4 border-t border-gray-800">
             <button
               onClick={handleLogout}
-              className="flex items-center w-full px-4 py-2 text-sm font-medium text-gray-300 rounded-md hover:bg-gray-700 hover:text-white"
+              className="flex items-center w-full px-4 py-2 text-sm font-medium text-gray-300 rounded-md hover:bg-gray-700 hover:text-white transition-colors"
             >
               <LogOut className="mr-3 h-5 w-5" />
               Logout
