@@ -3,15 +3,28 @@
 import { useState, useEffect } from 'react'
 import { Send, AlertCircle, ChevronDown, CheckCircle, Users, Info } from 'lucide-react'
 
+interface Page {
+  id: string
+  name: string
+  access_token: string
+  facebook_page_id: string
+}
+
+interface BroadcastResult {
+  success: boolean
+  recipientCount: number
+  broadcastId: string
+}
+
 export default function BroadcastPage() {
-  const [selectedPage, setSelectedPage] = useState(null)
-  const [pages, setPages] = useState([])
+  const [selectedPage, setSelectedPage] = useState<Page | null>(null)
+  const [pages, setPages] = useState<Page[]>([])
   const [message, setMessage] = useState('')
   const [useSpintax, setUseSpintax] = useState(false)
   const [sending, setSending] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [eligibleCount, setEligibleCount] = useState(0)
-  const [broadcastResult, setBroadcastResult] = useState(null)
+  const [broadcastResult, setBroadcastResult] = useState<BroadcastResult | null>(null)
   const [error, setError] = useState('')
   const [preview, setPreview] = useState('')
   const [loadingPages, setLoadingPages] = useState(true)
