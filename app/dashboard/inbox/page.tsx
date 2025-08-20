@@ -35,13 +35,19 @@ export default function InboxPage() {
   const loadConversations = async () => {
     if (!selectedPage || !supabase) return
     
+    console.log('Loading conversations for page:', selectedPage)
     setLoading(true)
+    
     try {
+      // First, try to fetch conversations from Facebook
+      console.log('Fetching conversations from Facebook API...')
       const response = await fetch(`/api/facebook/conversations?pageId=${selectedPage.id}`)
       const data = await response.json()
+      console.log('Facebook API response:', data)
       
       // Also load from database
-      const { data: dbConversations } = await supabase
+      console.log('Loading conversations from database...')
+      const { data: dbConversations, error: dbError } = await supabase
         .from('conversations')
         .select(`
           *,
@@ -50,6 +56,11 @@ export default function InboxPage() {
         .eq('page_id', selectedPage.id)
         .order('last_message_time', { ascending: false })
       
+      if (dbError) {
+        console.error('Database error:', dbError)
+      }
+      
+      console.log('Database conversations:', dbConversations)
       setConversations(dbConversations || [])
     } catch (error) {
       console.error('Failed to load conversations:', error)
