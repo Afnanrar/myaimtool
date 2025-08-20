@@ -4,10 +4,10 @@ import { useState, useEffect } from 'react'
 import { ChevronDown, MessageSquare, Search, RefreshCw, User } from 'lucide-react'
 
 export default function InboxPage() {
-  const [selectedPage, setSelectedPage] = useState(null)
-  const [pages, setPages] = useState([])
-  const [conversations, setConversations] = useState([])
-  const [selectedConversation, setSelectedConversation] = useState(null)
+  const [selectedPage, setSelectedPage] = useState<any>(null)
+  const [pages, setPages] = useState<any[]>([])
+  const [conversations, setConversations] = useState<any[]>([])
+  const [selectedConversation, setSelectedConversation] = useState<any>(null)
   const [loading, setLoading] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
@@ -41,7 +41,7 @@ export default function InboxPage() {
         }
       } else if (data.rawPages && data.rawPages.length > 0) {
         // If pages exist but aren't in database, still show them
-        const tempPages = data.rawPages.map(p => ({
+        const tempPages = data.rawPages.map((p: any) => ({
           id: p.id,
           name: p.name,
           facebook_page_id: p.id,
@@ -93,9 +93,9 @@ export default function InboxPage() {
         setConversations([])
         setError('No conversations found. Messages will appear here when customers message your page.')
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading conversations:', error)
-      setError('Failed to load conversations: ' + error.message)
+      setError('Failed to load conversations: ' + (error.message || 'Unknown error'))
     } finally {
       setLoading(false)
     }
