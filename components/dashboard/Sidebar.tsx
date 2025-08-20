@@ -84,11 +84,27 @@ export default function Sidebar({ userId }: { userId: string }) {
           <div className="p-4 border-t border-gray-800">
             <button
               onClick={handleLogout}
-              className="flex items-center w-full px-4 py-2 text-sm font-medium text-gray-300 rounded-md hover:bg-gray-700 hover:text-white transition-colors"
+              className="flex items-center w-full px-4 py-2 text-sm font-medium text-gray-300 rounded-md hover:bg-gray-700 hover:text-white transition-colors mb-4"
             >
               <LogOut className="mr-3 h-5 w-5" />
               Logout
             </button>
+            
+            {/* Legal Links */}
+            <div className="space-y-2 text-xs text-gray-400">
+              <Link 
+                href="/terms-of-service" 
+                className="block hover:text-gray-300 transition-colors"
+              >
+                Terms of Service
+              </Link>
+              <Link 
+                href="/privacy-policy" 
+                className="block hover:text-gray-300 transition-colors"
+              >
+                Privacy Policy
+              </Link>
+            </div>
           </div>
         </div>
       </div>
