@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { ChevronDown, MessageSquare, Search, RefreshCw, User } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 
 export default function InboxPage() {
   const [selectedPage, setSelectedPage] = useState<any>(null)
@@ -29,6 +30,61 @@ export default function InboxPage() {
       loadConversations()
     }
   }, [selectedPage])
+
+  // Real-time subscription for new messages
+  useEffect(() => {
+    if (!supabase || !selectedPage) return
+
+    // Subscribe to new messages in real-time
+    const messagesSubscription = supabase
+      .channel('messages')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `conversation_id=in.(${conversations.map(c => c.id).join(',')})`
+        },
+        (payload: any) => {
+          console.log('Real-time message received:', payload)
+          handleNewMessage(payload.new)
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'messages'
+        },
+        (payload: any) => {
+          console.log('Real-time message updated:', payload)
+          handleMessageUpdate(payload.new)
+        }
+      )
+      .subscribe()
+
+    return () => {
+      messagesSubscription.unsubscribe()
+    }
+  }, [supabase, selectedPage, conversations])
+
+  // Periodic refresh as fallback for real-time updates
+  useEffect(() => {
+    if (!selectedPage || conversations.length === 0) return
+
+    const interval = setInterval(() => {
+      // Only refresh if no real-time updates have been received recently
+      const lastUpdate = Date.now() - (window as any).lastMessageUpdate || 0
+      if (lastUpdate > 30000) { // 30 seconds
+        console.log('Periodic refresh triggered - no real-time updates received')
+        loadConversations()
+      }
+    }, 30000) // Check every 30 seconds
+
+    return () => clearInterval(interval)
+  }, [selectedPage, conversations])
 
   const loadPages = async () => {
     setLoadingPages(true)
@@ -153,6 +209,65 @@ export default function InboxPage() {
         [conversationId]: updatedMessages
       }
     })
+  }
+
+  const handleNewMessage = (newMessage: any) => {
+    console.log('Handling new message:', newMessage)
+    
+    // Track last update time for periodic refresh
+    ;(window as any).lastMessageUpdate = Date.now()
+    
+    // Update message cache
+    setMessageCache(prev => {
+      const conversationId = newMessage.conversation_id
+      const existingMessages = prev[conversationId] || []
+      
+      return {
+        ...prev,
+        [conversationId]: [...existingMessages, newMessage]
+      }
+    })
+    
+    // If this conversation is currently open, update the messages display
+    if (selectedConversation?.id === newMessage.conversation_id) {
+      setMessages(prev => [...prev, newMessage])
+    }
+    
+    // Update conversation list to show new message preview
+    setConversations(prev => prev.map(conv => {
+      if (conv.id === newMessage.conversation_id) {
+        return {
+          ...conv,
+          last_message_time: newMessage.created_at,
+          unread_count: conv.unread_count + (newMessage.is_from_page ? 0 : 1)
+        }
+      }
+      return conv
+    }))
+  }
+
+  const handleMessageUpdate = (updatedMessage: any) => {
+    console.log('Handling message update:', updatedMessage)
+    
+    // Update message in cache
+    setMessageCache(prev => {
+      const conversationId = updatedMessage.conversation_id
+      const existingMessages = prev[conversationId] || []
+      
+      return {
+        ...prev,
+        [conversationId]: existingMessages.map(msg => 
+          msg.id === updatedMessage.id ? updatedMessage : msg
+        )
+      }
+    })
+    
+    // If this conversation is currently open, update the messages display
+    if (selectedConversation?.id === updatedMessage.conversation_id) {
+      setMessages(prev => prev.map(msg => 
+        msg.id === updatedMessage.id ? updatedMessage : msg
+      ))
+    }
   }
 
   const loadMessages = async (conversation: any) => {
@@ -436,6 +551,18 @@ export default function InboxPage() {
               title="Refresh conversations"
             >
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+            <button
+              onClick={() => {
+                if (selectedConversation) {
+                  loadMessages(selectedConversation)
+                }
+              }}
+              disabled={loadingMessages || !selectedConversation}
+              className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              title="Refresh messages"
+            >
+              <RefreshCw className={`h-4 w-4 ${loadingMessages ? 'animate-spin' : ''}`} />
             </button>
           </div>
           
