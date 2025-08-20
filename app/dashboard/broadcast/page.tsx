@@ -34,6 +34,16 @@ interface Page {
   facebook_page_id: string
 }
 
+interface BroadcastResult {
+  success: boolean
+  totalLeads: number
+  sent24h: number
+  sentWithTag: number
+  failed: number
+  excluded: number
+  broadcastId: string
+}
+
 export default function BroadcastPage() {
   const [selectedPage, setSelectedPage] = useState<Page | null>(null)
   const [pages, setPages] = useState<Page[]>([])
@@ -43,7 +53,7 @@ export default function BroadcastPage() {
   const [sending, setSending] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [tagDropdownOpen, setTagDropdownOpen] = useState(false)
-  const [broadcastResult, setBroadcastResult] = useState(null)
+  const [broadcastResult, setBroadcastResult] = useState<BroadcastResult | null>(null)
   const [error, setError] = useState('')
   const [preview, setPreview] = useState('')
   const [loadingPages, setLoadingPages] = useState(true)
