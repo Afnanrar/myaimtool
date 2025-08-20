@@ -14,6 +14,7 @@ export default function InboxPage() {
   const [sendingMessage, setSendingMessage] = useState(false)
   const [newMessageText, setNewMessageText] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
+  const [messageCache, setMessageCache] = useState<Record<string, any[]>>({})
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [error, setError] = useState('')
@@ -94,6 +95,9 @@ export default function InboxPage() {
       if (data.conversations && data.conversations.length > 0) {
         setConversations(data.conversations)
         setError('')
+        
+        // Preload messages for all conversations in background
+        preloadMessages(data.conversations)
       } else {
         setConversations([])
         setError('No conversations found. Messages will appear here when customers message your page.')
@@ -104,6 +108,28 @@ export default function InboxPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const preloadMessages = async (conversations: any[]) => {
+    // Preload messages for all conversations in background
+    conversations.forEach(async (conv) => {
+      if (!messageCache[conv.id]) {
+        try {
+          const response = await fetch(`/api/facebook/messages?conversationId=${conv.id}`)
+          const data = await response.json()
+          
+          if (response.ok && data.messages) {
+            setMessageCache(prev => ({
+              ...prev,
+              [conv.id]: data.messages || []
+            }))
+            console.log('Preloaded messages for conversation:', conv.id)
+          }
+        } catch (error) {
+          console.log('Failed to preload messages for conversation:', conv.id)
+        }
+      }
+    })
   }
 
   const loadMessages = async (conversation: any) => {
@@ -127,9 +153,19 @@ export default function InboxPage() {
       
       if (data.messages && data.messages.length > 0) {
         setMessages(data.messages)
+        // Cache the messages for instant switching
+        setMessageCache(prev => ({
+          ...prev,
+          [conversation.id]: data.messages
+        }))
         setError('')
       } else {
         setMessages([])
+        // Cache empty messages array
+        setMessageCache(prev => ({
+          ...prev,
+          [conversation.id]: []
+        }))
         setError('No messages found in this conversation.')
       }
     } catch (error: any) {
@@ -157,9 +193,19 @@ export default function InboxPage() {
       
       if (data.messages && data.messages.length > 0) {
         setMessages(data.messages)
+        // Cache the messages for instant switching
+        setMessageCache(prev => ({
+          ...prev,
+          [conversation.id]: data.messages
+        }))
         setError('')
       } else {
         setMessages([])
+        // Cache empty messages array
+        setMessageCache(prev => ({
+          ...prev,
+          [conversation.id]: []
+        }))
         setError('No messages found in this conversation.')
       }
     } catch (error: any) {
@@ -218,11 +264,19 @@ export default function InboxPage() {
       }
       
       // Message sent successfully - replace optimistic message with real one
-      setMessages(prev => prev.map(msg => 
+      const updatedMessages = messages.map(msg => 
         msg.id === optimisticMessage.id 
           ? { ...msg, id: data.messageId, facebook_message_id: data.facebookMessageId }
           : msg
-      ))
+      )
+      
+      setMessages(updatedMessages)
+      
+      // Update the cache with the new messages
+      setMessageCache(prev => ({
+        ...prev,
+        [selectedConversation.id]: updatedMessages
+      }))
       
       // Show success message briefly
       setError('')
@@ -313,6 +367,7 @@ export default function InboxPage() {
                         setSelectedConversation(null) // Clear selected conversation
                         setMessages([]) // Clear messages
                         setNewMessageText('') // Clear message input
+                        setMessageCache({}) // Clear message cache when switching pages
                       }}
                       className={`w-full flex items-center px-4 py-3 hover:bg-gray-50 transition-colors ${
                         selectedPage?.id === page.id ? 'bg-blue-50' : ''
@@ -399,10 +454,19 @@ export default function InboxPage() {
                 <button
                   key={conv.id}
                   onClick={() => {
+                    // Switch conversation instantly
                     setSelectedConversation(conv)
                     setNewMessageText('') // Clear message input when switching conversations
-                    // Load messages without showing loading state for better UX
-                    loadMessagesSilently(conv)
+                    setError('') // Clear any previous errors
+                    
+                    // Check if messages are cached
+                    if (messageCache[conv.id]) {
+                      setMessages(messageCache[conv.id])
+                      console.log('Messages loaded from cache for:', conv.id)
+                    } else {
+                      // Load messages in background if not cached
+                      loadMessagesSilently(conv)
+                    }
                   }}
                   className={`w-full p-4 hover:bg-gray-50 transition-colors flex items-start gap-3 ${
                     selectedConversation?.id === conv.id ? 'bg-blue-50' : ''
