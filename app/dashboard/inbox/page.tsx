@@ -50,10 +50,27 @@ export default function InboxPage() {
     
     try {
       console.log('Fetching pages from database...')
-      const { data, error } = await supabase
+      // Try to order by created_at first, fall back to id if created_at doesn't exist
+      let { data, error } = await supabase
         .from('pages')
         .select('*')
-        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+      
+      // If no error and we have data, try to order by created_at
+      if (!error && data && data.length > 0) {
+        try {
+          const { data: orderedData, error: orderError } = await supabase
+            .from('pages')
+            .select('*')
+            .order('created_at', { ascending: false })
+          
+          if (!orderError && orderedData) {
+            data = orderedData
+          }
+        } catch (e) {
+          console.log('created_at column not available, using id ordering')
+        }
+      }
       
       if (error) {
         console.error('Database error:', error)
@@ -96,11 +113,29 @@ export default function InboxPage() {
       } else {
         // If no conversations from API, check database
         if (supabase) {
-          const { data: dbConversations } = await supabase
-            .from('conversations')
-            .select('*')
-            .eq('page_id', selectedPage.id)
-            .order('last_message_time', { ascending: false })
+                           // Try to order by last_message_time first, fall back to id if it doesn't exist
+                 let { data: dbConversations, error: convError } = await supabase
+                   .from('conversations')
+                   .select('*')
+                   .eq('page_id', selectedPage.id)
+                   .order('id', { ascending: false })
+                 
+                 // If no error and we have data, try to order by last_message_time
+                 if (!convError && dbConversations && dbConversations.length > 0) {
+                   try {
+                     const { data: orderedConvs, error: orderError } = await supabase
+                       .from('conversations')
+                       .select('*')
+                       .eq('page_id', selectedPage.id)
+                       .order('last_message_time', { ascending: false })
+                     
+                     if (!orderError && orderedConvs) {
+                       dbConversations = orderedConvs
+                     }
+                   } catch (e) {
+                     console.log('last_message_time column not available, using id ordering')
+                   }
+                 }
           
           setConversations(dbConversations || [])
           
