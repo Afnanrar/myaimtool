@@ -27,9 +27,16 @@ const MESSAGE_TAGS = [
   }
 ]
 
+interface Page {
+  id: string
+  name: string
+  access_token: string
+  facebook_page_id: string
+}
+
 export default function BroadcastPage() {
-  const [selectedPage, setSelectedPage] = useState(null)
-  const [pages, setPages] = useState([])
+  const [selectedPage, setSelectedPage] = useState<Page | null>(null)
+  const [pages, setPages] = useState<Page[]>([])
   const [message, setMessage] = useState('')
   const [messageTag, setMessageTag] = useState('')
   const [useSpintax, setUseSpintax] = useState(false)
