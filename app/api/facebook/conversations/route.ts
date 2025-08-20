@@ -20,6 +20,10 @@ export async function GET(req: NextRequest) {
       process.env.JWT_SECRET || 'your-secret-key-change-this'
     ) as any
     
+    if (!supabaseAdmin) {
+      return NextResponse.json({ error: 'Database not configured' }, { status: 500 })
+    }
+    
     // Get page details from database
     const { data: page } = await supabaseAdmin
       .from('pages')
