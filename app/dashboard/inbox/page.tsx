@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { ChevronDown, MessageSquare, Search, User, Clock } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
@@ -23,6 +23,9 @@ export default function InboxPage() {
   const [loadingPages, setLoadingPages] = useState(true)
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null)
   const [realtimeInterval, setRealtimeInterval] = useState<NodeJS.Timeout | null>(null)
+  
+  // Ref for messages container to enable auto-scrolling
+  const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     loadPages()
@@ -53,6 +56,8 @@ export default function InboxPage() {
         (payload: any) => {
           console.log('Real-time message received:', payload)
           handleNewMessage(payload.new)
+          // Scroll to bottom when new message arrives via real-time
+          setTimeout(() => scrollToBottom(), 100)
         }
       )
       .on(
@@ -123,6 +128,9 @@ export default function InboxPage() {
                   ? { ...conv, last_message_time: new Date().toISOString() }
                   : conv
               ))
+              
+              // Scroll to bottom when new messages arrive
+              setTimeout(() => scrollToBottom(), 100)
             }
           }
         }
@@ -141,6 +149,8 @@ export default function InboxPage() {
           console.log('Immediate sync found new messages:', syncData.newMessages.length)
           // Reload messages to show new ones
           loadMessagesSilently(selectedConversation, true)
+          // Scroll to bottom after immediate sync
+          setTimeout(() => scrollToBottom(), 200)
         }
       } catch (error) {
         console.error('Immediate sync error:', error)
@@ -236,6 +246,11 @@ export default function InboxPage() {
     } finally {
       setLoadingPages(false)
     }
+  }
+
+  // Function to scroll to bottom of messages
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
   const loadConversations = useCallback(async (forceRefresh = false) => {
@@ -488,6 +503,9 @@ export default function InboxPage() {
         setMessages(messageCache[conversation.id])
         setLoadingMessages(false)
         
+        // Scroll to bottom after loading from cache
+        setTimeout(() => scrollToBottom(), 100)
+        
         // Load fresh data in background if cache is old
         if (Date.now() - (conversation.lastCacheUpdate || 0) > 30000) { // 30 seconds
           loadMessagesSilently(conversation, true)
@@ -536,6 +554,9 @@ export default function InboxPage() {
         ))
         
         setError('')
+        
+        // Scroll to bottom after loading messages
+        setTimeout(() => scrollToBottom(), 100)
       } else {
         setMessages([])
         // Cache empty messages array
@@ -582,6 +603,9 @@ export default function InboxPage() {
             ? { ...conv, lastCacheUpdate: Date.now() }
             : conv
         ))
+        
+        // Scroll to bottom after loading messages silently
+        setTimeout(() => scrollToBottom(), 100)
       }
     } catch (error: any) {
       console.error('Error loading messages silently:', error)
@@ -606,11 +630,14 @@ export default function InboxPage() {
       created_at: new Date().toISOString()
     }
     
-    // Add message to UI immediately
-    setMessages(prev => [...prev, optimisticMessage])
-    
-    // Clear input immediately
-    setNewMessageText('')
+          // Add message to UI immediately
+      setMessages(prev => [...prev, optimisticMessage])
+      
+      // Clear input immediately
+      setNewMessageText('')
+      
+      // Scroll to bottom after adding new message
+      setTimeout(() => scrollToBottom(), 100)
     
     try {
       const response = await fetch('/api/facebook/messages/realtime', {
@@ -863,6 +890,8 @@ export default function InboxPage() {
                     if (messageCache[conv.id]) {
                       setMessages(messageCache[conv.id])
                       console.log('Messages loaded from cache for:', conv.id)
+                      // Scroll to bottom when switching to cached conversation
+                      setTimeout(() => scrollToBottom(), 100)
                     } else {
                       // Load messages in background if not cached
                       loadMessagesSilently(conv)
@@ -878,6 +907,8 @@ export default function InboxPage() {
                               console.log('Immediate sync found new messages:', data.newMessages.length)
                               // Reload messages to show new ones
                               loadMessagesSilently(conv, true)
+                              // Scroll to bottom after immediate sync
+                              setTimeout(() => scrollToBottom(), 200)
                             }
                           })
                           .catch(error => console.error('Immediate sync error:', error))
@@ -1037,6 +1068,9 @@ export default function InboxPage() {
                   ))}
                 </div>
               )}
+              
+              {/* Invisible element for auto-scrolling to bottom */}
+              <div ref={messagesEndRef} />
             </div>
             <div className="p-4 border-t">
               <div className="flex gap-2">
