@@ -11,6 +11,10 @@ export async function GET(req: NextRequest) {
   }
   
   try {
+    if (!supabaseAdmin) {
+      return NextResponse.json({ error: 'Database not configured' }, { status: 500 })
+    }
+
     // Get page from database
     let page = null
     const { data: pageById } = await supabaseAdmin
