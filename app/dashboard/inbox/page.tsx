@@ -190,25 +190,52 @@ export default function InboxPage() {
 
   const getUnreadCount = (conversationId: string) => {
     const messages = messageCache[conversationId] || []
-    // Count messages that are not from the page (i.e., from customers)
-    // and haven't been marked as read
-    return messages.filter(msg => !msg.is_from_page && !msg.is_read).length
+    // Count messages that are from customers (not from page) and are unread
+    // If is_read is undefined/null, consider it as unread
+    return messages.filter(msg => 
+      !msg.is_from_page && (msg.is_read === false || msg.is_read === undefined || msg.is_read === null)
+    ).length
   }
 
-  const markMessagesAsRead = (conversationId: string) => {
-    // Mark all customer messages as read in the cache
-    setMessageCache(prev => {
-      const conversationMessages = prev[conversationId] || []
-      const updatedMessages = conversationMessages.map(msg => ({
-        ...msg,
-        is_read: msg.is_from_page ? msg.is_read : true // Mark customer messages as read
-      }))
-      
-      return {
-        ...prev,
-        [conversationId]: updatedMessages
+  const markMessagesAsRead = async (conversationId: string) => {
+    try {
+      // Mark all customer messages as read in the database
+      const response = await fetch('/api/messages/mark-read', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ conversationId })
+      })
+
+      if (response.ok) {
+        // Update cache to reflect read status
+        setMessageCache(prev => {
+          const conversationMessages = prev[conversationId] || []
+          const updatedMessages = conversationMessages.map(msg => ({
+            ...msg,
+            is_read: msg.is_from_page ? msg.is_read : true // Mark customer messages as read
+          }))
+          
+          return {
+            ...prev,
+            [conversationId]: updatedMessages
+          }
+        })
+
+        // Update conversations list to remove unread count
+        setConversations(prev => prev.map(conv => {
+          if (conv.id === conversationId) {
+            return { ...conv, unread_count: 0 }
+          }
+          return conv
+        }))
+
+        console.log('Messages marked as read for conversation:', conversationId)
       }
-    })
+    } catch (error) {
+      console.error('Error marking messages as read:', error)
+    }
   }
 
   const handleNewMessage = (newMessage: any) => {
@@ -267,6 +294,42 @@ export default function InboxPage() {
       setMessages(prev => prev.map(msg => 
         msg.id === updatedMessage.id ? updatedMessage : msg
       ))
+    }
+  }
+
+  const syncMessagesFromFacebook = async (conversationId: string, pageId: string) => {
+    try {
+      console.log('Syncing messages from Facebook for conversation:', conversationId)
+      
+      const response = await fetch('/api/facebook/sync-messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ conversationId, pageId })
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        console.log('Sync successful:', data)
+        
+        // Reload messages to show synced content
+        if (selectedConversation?.id === conversationId) {
+          loadMessages(selectedConversation)
+        }
+        
+        // Reload conversations to update last message times
+        loadConversations()
+        
+        setSuccessMessage(`Synced ${data.newMessages} new messages from Facebook!`)
+        setTimeout(() => setSuccessMessage(''), 3000)
+      } else {
+        setError(data.error || 'Failed to sync messages')
+      }
+    } catch (error: any) {
+      console.error('Error syncing messages:', error)
+      setError('Failed to sync messages: ' + (error.message || 'Unknown error'))
     }
   }
 
@@ -417,6 +480,18 @@ export default function InboxPage() {
         ...prev,
         [selectedConversation.id]: updatedMessages
       }))
+
+      // Also update the conversation list to show the new message
+      setConversations(prev => prev.map(conv => {
+        if (conv.id === selectedConversation.id) {
+          return {
+            ...conv,
+            last_message_time: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }
+        }
+        return conv
+      }))
       
       // Show success message briefly
       setError('')
@@ -563,6 +638,18 @@ export default function InboxPage() {
               title="Refresh messages"
             >
               <RefreshCw className={`h-4 w-4 ${loadingMessages ? 'animate-spin' : ''}`} />
+            </button>
+            <button
+              onClick={() => {
+                if (selectedConversation && selectedPage) {
+                  syncMessagesFromFacebook(selectedConversation.id, selectedPage.id)
+                }
+              }}
+              disabled={!selectedConversation || !selectedPage}
+              className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              title="Sync messages from Facebook"
+            >
+              <RefreshCw className="h-4 w-4" />
             </button>
           </div>
           
