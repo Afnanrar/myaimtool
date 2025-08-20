@@ -568,7 +568,7 @@ export default function InboxPage() {
       // Message sent successfully - replace optimistic message with real one
       const updatedMessages = messages.map(msg => 
         msg.id === optimisticMessage.id 
-          ? { ...msg, id: data.messageId, facebook_message_id: data.facebookMessageId }
+          ? { ...msg, id: data.message.id, facebook_message_id: data.facebookMessageId }
           : msg
       )
       

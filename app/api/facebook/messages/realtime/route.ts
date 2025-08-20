@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { FacebookAPI } from '@/lib/facebook'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -57,13 +58,42 @@ export async function POST(req: NextRequest) {
   }
   
   try {
-    // Save the new message
+    // First, get the conversation and page details to send via Facebook
+    const { data: conversation } = await supabaseAdmin
+      .from('conversations')
+      .select(`
+        *,
+        pages!inner(
+          access_token,
+          facebook_page_id
+        )
+      `)
+      .eq('id', conversationId)
+      .single()
+    
+    if (!conversation) {
+      return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
+    }
+    
+    // Send message via Facebook API
+    const fb = new FacebookAPI(conversation.pages.access_token)
+    const result = await fb.sendMessage(
+      conversation.participant_id,
+      message,
+      conversation.pages.access_token
+    )
+    
+    if (!result || !result.message_id) {
+      throw new Error('Failed to send message via Facebook API')
+    }
+    
+    // Save the sent message to database
     const { data: savedMessage } = await supabaseAdmin
       .from('messages')
       .insert({
         conversation_id: conversationId,
-        facebook_message_id: `msg_${Date.now()}`,
-        sender_id: pageId,
+        facebook_message_id: result.message_id,
+        sender_id: conversation.pages.facebook_page_id,
         message_text: message,
         is_from_page: true,
         created_at: new Date().toISOString()
@@ -79,13 +109,14 @@ export async function POST(req: NextRequest) {
     
     return NextResponse.json({ 
       success: true, 
-      message: savedMessage 
+      message: savedMessage,
+      facebookMessageId: result.message_id
     })
     
   } catch (error) {
-    console.error('Error saving message:', error)
+    console.error('Error sending message:', error)
     return NextResponse.json({ 
-      error: 'Failed to save message' 
+      error: 'Failed to send message: ' + (error instanceof Error ? error.message : 'Unknown error')
     }, { status: 500 })
   }
 }
