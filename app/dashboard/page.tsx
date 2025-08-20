@@ -25,6 +25,7 @@ export default function DashboardPage() {
       // Get user info
       const response = await fetch('/api/user')
       if (!response.ok) {
+        console.error('User API failed:', response.status, response.statusText)
         router.push('/login')
         return
       }
@@ -33,19 +34,31 @@ export default function DashboardPage() {
       
       // Load stats
       if (supabase) {
-        const { data: pages } = await supabase.from('pages').select('id', { count: 'exact' })
-        const { data: conversations } = await supabase.from('conversations').select('id', { count: 'exact' })
-        const { data: broadcasts } = await supabase.from('broadcasts').select('id', { count: 'exact' })
-        
-        setStats({
-          totalPages: pages?.length || 0,
-          totalConversations: conversations?.length || 0,
-          totalBroadcasts: broadcasts?.length || 0,
-          recentMessages: 0
-        })
+        try {
+          const { data: pages } = await supabase.from('pages').select('id', { count: 'exact' })
+          const { data: conversations } = await supabase.from('conversations').select('id', { count: 'exact' })
+          const { data: broadcasts } = await supabase.from('broadcasts').select('id', { count: 'exact' })
+          
+          setStats({
+            totalPages: pages?.length || 0,
+            totalConversations: conversations?.length || 0,
+            totalBroadcasts: broadcasts?.length || 0,
+            recentMessages: 0
+          })
+        } catch (dbError) {
+          console.error('Database error:', dbError)
+          // Set default stats if database fails
+          setStats({
+            totalPages: 0,
+            totalConversations: 0,
+            totalBroadcasts: 0,
+            recentMessages: 0
+          })
+        }
       }
     } catch (error) {
       console.error('Failed to load data:', error)
+      // Don't redirect on network errors, just show empty state
     } finally {
       setLoading(false)
     }

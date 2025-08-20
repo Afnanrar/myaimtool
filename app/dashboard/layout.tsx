@@ -9,7 +9,23 @@ export default async function DashboardLayout({
 }) {
   const token = cookies().get('auth-token')
   
+  console.log('Dashboard layout - Token exists:', !!token)
+  
   if (!token) {
+    console.log('Dashboard layout - No token, redirecting to login')
+    redirect('/login')
+  }
+  
+  try {
+    // Verify the token is valid
+    const jwt = require('jsonwebtoken')
+    const decoded = jwt.verify(
+      token.value,
+      process.env.JWT_SECRET || 'your-secret-key-change-this'
+    )
+    console.log('Dashboard layout - Token verified successfully')
+  } catch (error) {
+    console.error('Dashboard layout - Token verification failed:', error)
     redirect('/login')
   }
   

@@ -2,14 +2,20 @@ import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 
 export async function POST() {
-  // Clear the auth cookie
-  cookies().set('auth-token', '', {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 0, // Expire immediately
-    path: '/'
-  })
+  const cookieStore = cookies()
   
-  return NextResponse.json({ success: true })
+  // Clear the auth token
+  cookieStore.delete('auth-token')
+  
+  return NextResponse.json({ message: 'Logged out successfully' })
+}
+
+export async function GET() {
+  const cookieStore = cookies()
+  
+  // Clear the auth token
+  cookieStore.delete('auth-token')
+  
+  // Redirect to login page
+  return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/login`)
 }
