@@ -22,6 +22,10 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const code = searchParams.get('code')
   
+  console.log('Callback URL received:', req.url)
+  console.log('All search params:', Object.fromEntries(searchParams.entries()))
+  console.log('Authorization code:', code)
+  
   if (!code) {
     console.log('No authorization code received')
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
