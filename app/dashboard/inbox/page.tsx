@@ -1,37 +1,20 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
 import { ChevronDown, MessageSquare, Search, RefreshCw, User } from 'lucide-react'
 
-interface Page {
-  id: string
-  name: string
-  facebook_page_id: string
-  access_token: string
-  created_at: string
-}
-
-interface Conversation {
-  id: string
-  participant_name: string
-  last_message_time: string
-  unread_count: number
-  participant_id: string
-}
-
 export default function InboxPage() {
-  const [selectedPage, setSelectedPage] = useState<Page | null>(null)
-  const [pages, setPages] = useState<Page[]>([])
-  const [conversations, setConversations] = useState<Conversation[]>([])
-  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null)
+  const [selectedPage, setSelectedPage] = useState(null)
+  const [pages, setPages] = useState([])
+  const [conversations, setConversations] = useState([])
+  const [selectedConversation, setSelectedConversation] = useState(null)
   const [loading, setLoading] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [error, setError] = useState('')
+  const [loadingPages, setLoadingPages] = useState(true)
 
   useEffect(() => {
-    console.log('Inbox page mounted, loading pages...')
     loadPages()
   }, [])
 
@@ -42,52 +25,38 @@ export default function InboxPage() {
   }, [selectedPage])
 
   const loadPages = async () => {
-    console.log('Loading pages in inbox...')
-    if (!supabase) {
-      console.log('Supabase client is null')
-      return
-    }
-    
+    setLoadingPages(true)
     try {
-      console.log('Fetching pages from database...')
-      // Try to order by created_at first, fall back to id if created_at doesn't exist
-      let { data, error } = await supabase
-        .from('pages')
-        .select('*')
-        .order('id', { ascending: false })
+      // Load pages from the API that already works in settings
+      const response = await fetch('/api/facebook/pages')
+      const data = await response.json()
       
-      // If no error and we have data, try to order by created_at
-      if (!error && data && data.length > 0) {
-        try {
-          const { data: orderedData, error: orderError } = await supabase
-            .from('pages')
-            .select('*')
-            .order('created_at', { ascending: false })
-          
-          if (!orderError && orderedData) {
-            data = orderedData
-          }
-        } catch (e) {
-          console.log('created_at column not available, using id ordering')
+      console.log('Pages loaded:', data)
+      
+      if (data.pages && data.pages.length > 0) {
+        setPages(data.pages)
+        // Auto-select first page
+        if (!selectedPage) {
+          setSelectedPage(data.pages[0])
         }
-      }
-      
-      if (error) {
-        console.error('Database error:', error)
-        return
-      }
-      
-      console.log('Pages loaded from database:', data)
-      
-      if (data && data.length > 0) {
-        setPages(data)
-        setSelectedPage(data[0]) // Auto-select first page
-        console.log('First page selected:', data[0])
-      } else {
-        console.log('No pages found in database')
+      } else if (data.rawPages && data.rawPages.length > 0) {
+        // If pages exist but aren't in database, still show them
+        const tempPages = data.rawPages.map(p => ({
+          id: p.id,
+          name: p.name,
+          facebook_page_id: p.id,
+          access_token: p.access_token
+        }))
+        setPages(tempPages)
+        if (!selectedPage) {
+          setSelectedPage(tempPages[0])
+        }
       }
     } catch (error) {
       console.error('Error loading pages:', error)
+      setError('Failed to load pages')
+    } finally {
+      setLoadingPages(false)
     }
   }
 
@@ -98,55 +67,35 @@ export default function InboxPage() {
     setError('')
     
     try {
-      // First, try to fetch from Facebook API
-      const response = await fetch(`/api/facebook/conversations?pageId=${selectedPage.id}`)
+      // Use the page's ID to fetch conversations
+      const pageId = selectedPage.id || selectedPage.facebook_page_id
+      const response = await fetch(`/api/facebook/conversations?pageId=${pageId}`)
       const data = await response.json()
+      
+      console.log('Conversations response:', data)
       
       if (!response.ok) {
         setError(data.error || 'Failed to load conversations')
+        
+        // Show more details about the error
+        if (data.details) {
+          console.error('Error details:', data.details)
+        }
+        
         setConversations([])
         return
       }
       
       if (data.conversations && data.conversations.length > 0) {
         setConversations(data.conversations)
+        setError('')
       } else {
-        // If no conversations from API, check database
-        if (supabase) {
-                           // Try to order by last_message_time first, fall back to id if it doesn't exist
-                 let { data: dbConversations, error: convError } = await supabase
-                   .from('conversations')
-                   .select('*')
-                   .eq('page_id', selectedPage.id)
-                   .order('id', { ascending: false })
-                 
-                 // If no error and we have data, try to order by last_message_time
-                 if (!convError && dbConversations && dbConversations.length > 0) {
-                   try {
-                     const { data: orderedConvs, error: orderError } = await supabase
-                       .from('conversations')
-                       .select('*')
-                       .eq('page_id', selectedPage.id)
-                       .order('last_message_time', { ascending: false })
-                     
-                     if (!orderError && orderedConvs) {
-                       dbConversations = orderedConvs
-                     }
-                   } catch (e) {
-                     console.log('last_message_time column not available, using id ordering')
-                   }
-                 }
-          
-          setConversations(dbConversations || [])
-          
-          if (!dbConversations || dbConversations.length === 0) {
-            setError('No conversations found. Messages will appear here when customers message your page.')
-          }
-        }
+        setConversations([])
+        setError('No conversations found. Messages will appear here when customers message your page.')
       }
     } catch (error) {
       console.error('Error loading conversations:', error)
-      setError('Failed to load conversations')
+      setError('Failed to load conversations: ' + error.message)
     } finally {
       setLoading(false)
     }
@@ -155,6 +104,17 @@ export default function InboxPage() {
   const filteredConversations = conversations.filter(conv =>
     conv.participant_name?.toLowerCase().includes(searchTerm.toLowerCase())
   )
+
+  if (loadingPages) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading pages...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -166,45 +126,50 @@ export default function InboxPage() {
             <button
               onClick={() => setDropdownOpen(!dropdownOpen)}
               className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 border rounded-lg hover:bg-gray-100 transition-colors"
+              disabled={pages.length === 0}
             >
               <div className="flex items-center">
                 {selectedPage ? (
                   <>
                     <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold mr-3">
-                      {selectedPage.name.charAt(0)}
+                      {selectedPage.name?.charAt(0) || '?'}
                     </div>
                     <div className="text-left">
                       <p className="font-semibold text-gray-900">{selectedPage.name}</p>
-                      <p className="text-xs text-gray-500">Click to change</p>
+                      <p className="text-xs text-gray-500">
+                        {pages.length > 1 ? 'Click to change' : 'Selected'}
+                      </p>
                     </div>
                   </>
                 ) : (
-                  <span className="text-gray-500">Select a page</span>
+                  <span className="text-gray-500">
+                    {pages.length === 0 ? 'No pages connected' : 'Select a page'}
+                  </span>
                 )}
               </div>
-              <ChevronDown className={`h-5 w-5 text-gray-400 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
+              {pages.length > 1 && (
+                <ChevronDown className={`h-5 w-5 text-gray-400 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
+              )}
             </button>
             
-            {/* Debug Info */}
-            <div className="mt-2 text-xs text-gray-500">
-              Pages loaded: {pages.length} | Selected: {selectedPage?.name || 'None'}
-            </div>
-            
-            {dropdownOpen && (
+            {dropdownOpen && pages.length > 0 && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setDropdownOpen(false)} />
-                <div className="absolute top-full left-0 right-0 mt-2 bg-white border rounded-lg shadow-lg z-20">
+                <div className="absolute top-full left-0 right-0 mt-2 bg-white border rounded-lg shadow-lg z-20 max-h-60 overflow-y-auto">
                   {pages.map((page) => (
                     <button
-                      key={page.id}
+                      key={page.id || page.facebook_page_id}
                       onClick={() => {
                         setSelectedPage(page)
                         setDropdownOpen(false)
+                        setConversations([]) // Clear conversations when switching pages
                       }}
-                      className="w-full flex items-center px-4 py-3 hover:bg-gray-50 transition-colors"
+                      className={`w-full flex items-center px-4 py-3 hover:bg-gray-50 transition-colors ${
+                        selectedPage?.id === page.id ? 'bg-blue-50' : ''
+                      }`}
                     >
                       <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold mr-3">
-                        {page.name.charAt(0)}
+                        {page.name?.charAt(0) || '?'}
                       </div>
                       <span className="font-medium text-gray-900">{page.name}</span>
                     </button>
@@ -212,6 +177,11 @@ export default function InboxPage() {
                 </div>
               </>
             )}
+          </div>
+          
+          {/* Debug info */}
+          <div className="mt-2 text-xs text-gray-500">
+            Pages loaded: {pages.length} | Selected: {selectedPage ? 'Yes' : 'No'}
           </div>
         </div>
 
@@ -226,6 +196,7 @@ export default function InboxPage() {
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={!selectedPage}
               />
             </div>
             <button
@@ -236,19 +207,19 @@ export default function InboxPage() {
             >
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
-            <button
-              onClick={loadPages}
-              className="p-2 border rounded-lg hover:bg-gray-50"
-              title="Refresh pages"
-            >
-              <RefreshCw className="h-4 w-4" />
-            </button>
           </div>
         </div>
 
         {/* Conversations List */}
         <div className="flex-1 overflow-y-auto">
-          {loading ? (
+          {!selectedPage ? (
+            <div className="p-4 text-center text-gray-500">
+              <p>No page selected</p>
+              <a href="/dashboard/settings" className="text-blue-500 hover:underline text-sm mt-2 inline-block">
+                Go to settings to connect a page
+              </a>
+            </div>
+          ) : loading ? (
             <div className="flex items-center justify-center py-8">
               <div className="text-gray-500">Loading conversations...</div>
             </div>
@@ -268,8 +239,8 @@ export default function InboxPage() {
             <div className="text-center py-8">
               <MessageSquare className="h-12 w-12 text-gray-300 mx-auto mb-3" />
               <p className="text-gray-500">No conversations yet</p>
-              <p className="text-sm text-gray-400 mt-1">
-                {searchTerm ? 'Try a different search' : 'Messages will appear here'}
+              <p className="text-sm text-gray-400 mt-1 px-4">
+                {searchTerm ? 'Try a different search' : 'When people message your page, they will appear here'}
               </p>
             </div>
           ) : (
@@ -310,11 +281,10 @@ export default function InboxPage() {
         </div>
       </div>
 
-      {/* Message Thread */}
+      {/* Message Thread - Right side remains the same */}
       <div className="flex-1 flex flex-col bg-white">
         {selectedConversation ? (
           <>
-            {/* Header */}
             <div className="p-4 border-b">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-gray-300 rounded-full flex items-center justify-center">
@@ -328,16 +298,11 @@ export default function InboxPage() {
                 </div>
               </div>
             </div>
-
-            {/* Messages Area */}
             <div className="flex-1 p-4 overflow-y-auto">
               <div className="text-center text-gray-500">
                 <p>Messages will appear here</p>
-                <p className="text-sm mt-2">Message thread functionality coming soon</p>
               </div>
             </div>
-
-            {/* Message Input */}
             <div className="p-4 border-t">
               <div className="flex gap-2">
                 <input
