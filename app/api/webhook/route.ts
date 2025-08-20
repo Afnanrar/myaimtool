@@ -45,6 +45,11 @@ export async function POST(req: NextRequest) {
 }
 
 async function processMessagingEvent(pageId: string, event: any) {
+  if (!supabaseAdmin) {
+    console.error('Database not configured for webhook')
+    return
+  }
+  
   // Find page in database
   const { data: page } = await supabaseAdmin
     .from('pages')
