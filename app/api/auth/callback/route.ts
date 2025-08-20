@@ -5,55 +5,40 @@ import jwt from 'jsonwebtoken'
 
 export async function GET(req: NextRequest) {
   console.log('Auth callback started')
-  console.log('Environment variables check:')
-  console.log('FACEBOOK_APP_ID:', !!process.env.NEXT_PUBLIC_FACEBOOK_APP_ID)
-  console.log('FACEBOOK_APP_SECRET:', !!process.env.FACEBOOK_APP_SECRET)
-  console.log('JWT_SECRET:', !!process.env.JWT_SECRET)
-  console.log('SUPABASE_URL:', !!process.env.NEXT_PUBLIC_SUPABASE_URL)
-  console.log('SUPABASE_SERVICE_KEY:', !!process.env.SUPABASE_SERVICE_ROLE_KEY)
-  
-  // Check if required environment variables are set
-  if (!process.env.NEXT_PUBLIC_FACEBOOK_APP_ID || !process.env.FACEBOOK_APP_SECRET || !process.env.JWT_SECRET) {
-    console.log('Missing required environment variables')
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-    return NextResponse.redirect(`${baseUrl}/login?error=service_not_configured`)
-  }
   
   const { searchParams } = new URL(req.url)
   const code = searchParams.get('code')
+  const error = searchParams.get('error')
   
-  console.log('Callback URL received:', req.url)
-  console.log('All search params:', Object.fromEntries(searchParams.entries()))
-  console.log('Authorization code:', code)
+  if (error) {
+    console.log('Facebook OAuth error:', error)
+    return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/login?error=${error}`)
+  }
   
   if (!code) {
     console.log('No authorization code received')
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-    return NextResponse.redirect(`${baseUrl}/login?error=no_code`)
+    return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/login?error=no_code`)
   }
 
   try {
     console.log('Starting OAuth flow...')
     
     // Exchange code for access token
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-    console.log('Callback route - baseUrl:', baseUrl)
-    console.log('Callback route - redirect_uri:', `${baseUrl}/api/auth/callback`)
+    const tokenUrl = new URL('https://graph.facebook.com/v19.0/oauth/access_token')
+    tokenUrl.searchParams.append('client_id', process.env.NEXT_PUBLIC_FACEBOOK_APP_ID!)
+    tokenUrl.searchParams.append('redirect_uri', `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/callback`)
+    tokenUrl.searchParams.append('client_secret', process.env.FACEBOOK_APP_SECRET!)
+    tokenUrl.searchParams.append('code', code)
     
-    const tokenResponse = await fetch(
-      `https://graph.facebook.com/v19.0/oauth/access_token?` +
-      `client_id=${process.env.NEXT_PUBLIC_FACEBOOK_APP_ID}` +
-      `&redirect_uri=${baseUrl}/api/auth/callback` +
-      `&client_secret=${process.env.FACEBOOK_APP_SECRET}` +
-      `&code=${code}`
-    )
+    console.log('Token exchange URL:', tokenUrl.toString())
     
-    console.log('Token response status:', tokenResponse.status)
+    const tokenResponse = await fetch(tokenUrl.toString())
     const tokenData = await tokenResponse.json()
-    console.log('Token response data:', tokenData)
     
-    if (!tokenData.access_token) {
-      throw new Error(`No access token received: ${JSON.stringify(tokenData)}`)
+    console.log('Token response:', tokenData)
+    
+    if (tokenData.error) {
+      throw new Error(tokenData.error.message)
     }
     
     const { access_token } = tokenData
@@ -63,64 +48,87 @@ export async function GET(req: NextRequest) {
     const userResponse = await fetch(
       `https://graph.facebook.com/v19.0/me?fields=id,name,email&access_token=${access_token}`
     )
-    
-    console.log('User response status:', userResponse.status)
     const userData = await userResponse.json()
+    
     console.log('User data:', userData)
     
     if (!userData.id) {
-      throw new Error(`No user ID received: ${JSON.stringify(userData)}`)
+      throw new Error('No user ID received from Facebook')
     }
     
-    // Save user to database
     if (!supabaseAdmin) {
       throw new Error('Database not configured')
     }
     
+    // Save or update user in database
     console.log('Saving user to database...')
     const { data: user, error: dbError } = await supabaseAdmin
       .from('users')
       .upsert({
         facebook_id: userData.id,
         name: userData.name,
-        email: userData.email
+        email: userData.email || null
+      }, {
+        onConflict: 'facebook_id'
       })
       .select()
       .single()
     
     if (dbError) {
       console.error('Database error:', dbError)
-      throw new Error(`Database error: ${dbError.message}`)
+      // Continue with Facebook ID as user ID
+      console.log('Using Facebook ID as fallback user ID')
+      const token = jwt.sign(
+        { 
+          userId: userData.id, // Use Facebook ID as fallback
+          facebookId: userData.id,
+          name: userData.name,
+          email: userData.email || '',
+          accessToken: access_token
+        },
+        process.env.JWT_SECRET || 'your-secret-key-change-this',
+        { expiresIn: '7d' }
+      )
+      
+      cookies().set('auth-token', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 60 * 60 * 24 * 7
+      })
+      
+      console.log('Fallback token created, redirecting to dashboard...')
+      return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/dashboard`)
     }
     
-    console.log('User saved to database:', user)
-    
-    // Create JWT token
+    // Create JWT token with database user ID
+    console.log('User saved successfully, creating JWT token...')
     const token = jwt.sign(
       { 
-        userId: user.id,
+        userId: user.id, // Use database UUID
         facebookId: userData.id,
+        name: userData.name,
+        email: userData.email || '',
         accessToken: access_token
       },
-      process.env.JWT_SECRET!,
+      process.env.JWT_SECRET || 'your-secret-key-change-this',
       { expiresIn: '7d' }
     )
     
-    console.log('JWT token created')
+    console.log('JWT token created with database user ID:', user.id)
     
-    // Set cookie
     cookies().set('auth-token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7 // 7 days
+      maxAge: 60 * 60 * 24 * 7
     })
     
     console.log('Cookie set, redirecting to dashboard...')
-    return NextResponse.redirect(`${baseUrl}/dashboard`)
+    return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/dashboard`)
+    
   } catch (error) {
     console.error('Auth error:', error)
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-    return NextResponse.redirect(`${baseUrl}/login?error=auth_failed`)
+    return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/login?error=auth_failed`)
   }
 }
