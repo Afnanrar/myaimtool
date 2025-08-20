@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
     
     // First, try to load from database cache (instant)
     if (!forceRefresh) {
-      const { data: cachedConversations } = await supabaseAdmin
+      const { data: cachedConversations } = await supabaseAdmin!
         .from('conversations')
         .select('*')
         .eq('page_id', page.id)
@@ -69,7 +69,7 @@ export async function GET(req: NextRequest) {
       console.error('Facebook API Error:', data.error)
       
       // Still return cached data if available
-      const { data: fallbackConversations } = await supabaseAdmin
+      const { data: fallbackConversations } = await supabaseAdmin!
         .from('conversations')
         .select('*')
         .eq('page_id', page.id)
@@ -91,7 +91,7 @@ export async function GET(req: NextRequest) {
         const participant = conv.participants?.data?.find((p: any) => p.id !== page.facebook_page_id)
         
         if (participant) {
-          const { data: savedConv } = await supabaseAdmin
+          const { data: savedConv } = await supabaseAdmin!
             .from('conversations')
             .upsert({
               page_id: page.id,
@@ -126,7 +126,7 @@ export async function GET(req: NextRequest) {
     console.error('Error in conversations API:', error)
     
     // Return cached data on error
-    const { data: cachedConversations } = await supabaseAdmin
+    const { data: cachedConversations } = await supabaseAdmin!
       .from('conversations')
       .select('*')
       .eq('page_id', page.id)
