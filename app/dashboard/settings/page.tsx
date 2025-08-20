@@ -1,72 +1,67 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
-import { Users, Trash2, RefreshCw } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 
 interface Page {
   id: string
   name: string
+  facebook_page_id: string
   access_token: string
   created_at: string
 }
 
 export default function SettingsPage() {
   const [pages, setPages] = useState<Page[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
+  const [message, setMessage] = useState('')
+  const router = useRouter()
   
   useEffect(() => {
     loadPages()
   }, [])
   
   const loadPages = async () => {
-    if (!supabase) {
-      setLoading(false)
-      return
-    }
-    
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-      
-      const { data } = await supabase
-        .from('pages')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-      
-      setPages(data || [])
-    } catch (error) {
-      console.error('Failed to load pages:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-  
-  const disconnectPage = async (pageId: string) => {
-    if (!supabase) return
-    
-    try {
-      await supabase
-        .from('pages')
-        .delete()
-        .eq('id', pageId)
-      
-      setPages(pages.filter(p => p.id !== pageId))
-    } catch (error) {
-      console.error('Failed to disconnect page:', error)
-    }
-  }
-  
-  const refreshPages = async () => {
-    setLoading(true)
-    try {
+      console.log('Loading pages from API...')
       const response = await fetch('/api/facebook/pages')
-      if (response.ok) {
-        await loadPages()
+      if (!response.ok) {
+        if (response.status === 401) {
+          console.log('Unauthorized, redirecting to login')
+          router.push('/login')
+          return
+        }
+        throw new Error('Failed to load pages')
+      }
+      const data = await response.json()
+      console.log('Pages loaded:', data)
+      setPages(data.pages || [])
+    } catch (error) {
+      console.error('Error loading pages:', error)
+      setMessage('Failed to load pages')
+    }
+  }
+  
+  const connectPages = async () => {
+    setLoading(true)
+    setMessage('')
+    
+    try {
+      console.log('Connecting to Facebook pages...')
+      const response = await fetch('/api/facebook/pages')
+      const data = await response.json()
+      
+      if (data.pages && data.pages.length > 0) {
+        setPages(data.pages)
+        setMessage(`Successfully connected ${data.pages.length} page(s)!`)
+        console.log('Pages connected successfully:', data.pages)
+      } else {
+        setMessage('No pages found. Make sure you have admin access to at least one Facebook Page.')
+        console.log('No pages found in response')
       }
     } catch (error) {
-      console.error('Failed to refresh pages:', error)
+      console.error('Error connecting pages:', error)
+      setMessage('Failed to connect pages. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -74,96 +69,63 @@ export default function SettingsPage() {
   
   return (
     <div className="p-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
-        <p className="text-gray-600 mt-2">Manage your connected pages and account settings</p>
-      </div>
+      <h1 className="text-2xl font-bold mb-6">Settings - Manage Pages</h1>
       
-      <div className="max-w-4xl">
-        <div className="bg-white rounded-lg shadow p-6 mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold">Connected Facebook Pages</h2>
+      {message && (
+        <div className={`p-4 rounded mb-4 ${
+          message.includes('Success') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+        }`}>
+          {message}
+        </div>
+      )}
+      
+      <div className="bg-white rounded-lg shadow p-6">
+        <h2 className="text-lg font-semibold mb-4">Connected Pages</h2>
+        
+        {pages.length === 0 ? (
+          <div className="text-center py-8">
+            <p className="text-gray-500 mb-4">No pages connected yet</p>
             <button
-              onClick={refreshPages}
+              onClick={connectPages}
               disabled={loading}
-              className="flex items-center px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
+              className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
             >
-              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+              {loading ? 'Connecting...' : 'Connect Facebook Pages'}
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {pages.map((page) => (
+              <div key={page.id} className="flex items-center justify-between p-4 border rounded">
+                <div>
+                  <h3 className="font-medium">{page.name}</h3>
+                  <p className="text-sm text-gray-500">ID: {page.facebook_page_id}</p>
+                </div>
+                <span className="px-3 py-1 bg-green-100 text-green-800 rounded text-sm">
+                  Connected
+                </span>
+              </div>
+            ))}
+            
+            <button
+              onClick={connectPages}
+              disabled={loading}
+              className="mt-4 px-4 py-2 border rounded hover:bg-gray-50"
+            >
               Refresh Pages
             </button>
           </div>
-          
-          {loading ? (
-            <div className="space-y-4">
-              {[...Array(3)].map((_, i) => (
-                <div key={i} className="animate-pulse">
-                  <div className="h-16 bg-gray-200 rounded-lg"></div>
-                </div>
-              ))}
-            </div>
-          ) : pages.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              <Users className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-              <p>No pages connected yet</p>
-              <a
-                href="/api/auth/login"
-                className="inline-block mt-2 px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
-              >
-                Connect Your First Page
-              </a>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {pages.map((page) => (
-                <div key={page.id} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex items-center">
-                    <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold mr-3">
-                      {page.name.charAt(0)}
-                    </div>
-                    <div>
-                      <p className="font-medium">{page.name}</p>
-                      <p className="text-sm text-gray-500">Connected {new Date(page.created_at).toLocaleDateString()}</p>
-                    </div>
-                  </div>
-                  
-                  <button
-                    onClick={() => disconnectPage(page.id)}
-                    className="flex items-center px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition"
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Disconnect
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-xl font-semibold mb-4">Account Information</h2>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                App URL
-              </label>
-              <p className="text-sm text-gray-900 bg-gray-50 p-3 rounded-lg">
-                {process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}
-              </p>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Webhook URL
-              </label>
-              <p className="text-sm text-gray-900 bg-gray-50 p-3 rounded-lg">
-                {process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/webhook
-              </p>
-              <p className="text-xs text-gray-500 mt-1">
-                Use this URL in your Facebook App settings to receive real-time messages
-              </p>
-            </div>
-          </div>
-        </div>
+        )}
+      </div>
+      
+      <div className="mt-8 p-4 bg-yellow-50 border border-yellow-200 rounded">
+        <h3 className="font-semibold text-yellow-800 mb-2">Important Notes:</h3>
+        <ul className="text-sm text-yellow-700 space-y-1">
+          <li>• You must be an admin of the Facebook Page to connect it</li>
+          <li>• Pages need to have messaging enabled</li>
+          <li>• Make sure your Facebook App has the necessary permissions</li>
+          <li>• In development mode, only test users can use the app</li>
+        </ul>
       </div>
     </div>
   )
