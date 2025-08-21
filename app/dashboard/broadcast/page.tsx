@@ -107,11 +107,17 @@ export default function BroadcastPage() {
     if (!selectedPage) return
     
     try {
+      console.log('Loading audience stats for page:', selectedPage.id)
       const response = await fetch(`/api/facebook/audience-stats?pageId=${selectedPage.id}`)
       const data = await response.json()
       
+      console.log('Audience stats response:', data)
+      
       if (data.stats) {
         setAudienceStats(data.stats)
+        console.log('Audience stats set:', data.stats)
+      } else {
+        console.error('No stats in response:', data)
       }
     } catch (error) {
       console.error('Error loading audience stats:', error)
@@ -185,19 +191,21 @@ export default function BroadcastPage() {
       const data = await response.json()
 
       if (response.ok) {
+        console.log('Broadcast response:', data)
         setBroadcastResult({
           success: true,
-          totalLeads: data.totalLeads,
-          sent24h: data.sent24h,
-          sentWithTag: data.sentWithTag,
-          failed: data.failed,
-          excluded: data.excluded,
-          broadcastId: data.broadcastId
+          totalLeads: data.totalLeads || 0,
+          sent24h: data.sent24h || 0,
+          sentWithTag: data.sentWithTag || 0,
+          failed: data.failed || 0,
+          excluded: data.excluded || 0,
+          broadcastId: data.broadcastId || 'unknown'
         })
         setMessage('')
         setPreview('')
         setMessageTag('')
       } else {
+        console.error('Broadcast failed:', data)
         setError(data.error || 'Failed to send broadcast')
       }
     } catch (error: any) {
@@ -491,6 +499,18 @@ export default function BroadcastPage() {
                     </div>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* Debug Info (remove in production) */}
+            {process.env.NODE_ENV === 'development' && (
+              <div className="mb-6 p-4 bg-gray-100 rounded-lg text-xs">
+                <h4 className="font-semibold mb-2">Debug Info:</h4>
+                <p>Selected Page: {selectedPage?.id || 'None'}</p>
+                <p>Message Length: {message.length}</p>
+                <p>Message Tag: {messageTag || 'None'}</p>
+                <p>Audience Stats: {JSON.stringify(audienceStats)}</p>
+                <p>Send Disabled: {isSendDisabled.toString()}</p>
               </div>
             )}
 
