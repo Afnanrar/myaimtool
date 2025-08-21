@@ -26,11 +26,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Page not found' }, { status: 404 })
     }
     
-    // Get all conversations for this page
+    // Get all conversations for this page with proper validation
     const { data: conversations } = await supabaseAdmin!
       .from('conversations')
-      .select('participant_id, last_message_time')
+      .select('participant_id, last_message_time, participant_name')
       .eq('page_id', pageId)
+      .not('participant_id', 'is', null)
+      .not('participant_id', 'eq', '')
     
     if (!conversations || conversations.length === 0) {
       return NextResponse.json({ error: 'No conversations found for this page' }, { status: 400 })
@@ -43,9 +45,48 @@ export async function POST(req: NextRequest) {
     let sentWithTag = 0
     let failed = 0
     let excluded = 0
+    let invalidUsers = 0
+    let outsideWindow = 0
     
-    // Process each conversation
-    for (const conversation of conversations) {
+    // Filter and categorize conversations
+    const eligibleConversations = conversations.filter(conv => {
+      // Skip conversations without valid participant IDs
+      if (!conv.participant_id || conv.participant_id === 'undefined' || conv.participant_id === 'null') {
+        invalidUsers++
+        return false
+      }
+      
+      // Check if user has messaged within 24 hours
+      if (conv.last_message_time) {
+        const lastMessage = new Date(conv.last_message_time)
+        if (lastMessage > twentyFourHoursAgo) {
+          return true // Eligible for standard message
+        } else {
+          // Check if we have a valid message tag for 24h+ messaging
+          if (messageTag && messageTag.trim() !== '') {
+            return true // Eligible with message tag
+          } else {
+            outsideWindow++
+            return false // Not eligible
+          }
+        }
+      } else {
+        // No last message time, exclude
+        outsideWindow++
+        return false
+      }
+    })
+    
+    console.log(`Broadcast eligibility: ${conversations.length} total, ${eligibleConversations.length} eligible, ${invalidUsers} invalid, ${outsideWindow} outside window`)
+    
+    if (eligibleConversations.length === 0) {
+      return NextResponse.json({ 
+        error: 'No eligible recipients found. All users are either invalid or outside the 24-hour messaging window without a proper message tag.' 
+      }, { status: 400 })
+    }
+    
+    // Process each eligible conversation
+    for (const conversation of eligibleConversations) {
       try {
         const lastMessage = new Date(conversation.last_message_time)
         const isWithin24h = lastMessage > twentyFourHoursAgo
@@ -59,6 +100,13 @@ export async function POST(req: NextRequest) {
         // Add message tag for messages after 24h
         if (!isWithin24h && messageTag) {
           messagePayload.tag = messageTag
+        }
+        
+        // Validate user ID format (Facebook user IDs are numeric)
+        if (!/^\d+$/.test(conversation.participant_id)) {
+          console.log(`Skipping invalid user ID format: ${conversation.participant_id}`)
+          invalidUsers++
+          continue
         }
         
         // Send message via Facebook Graph API
@@ -95,9 +143,21 @@ export async function POST(req: NextRequest) {
           
           console.log(`Broadcast sent to ${conversation.participant_id}: ${result.message_id}`)
         } else {
-          // Message failed
+          // Message failed - categorize the error
           failed++
+          const errorMessage = result.error?.message || 'Unknown error'
+          const errorCode = result.error?.code || 0
+          
           console.error(`Failed to send broadcast to ${conversation.participant_id}:`, result)
+          
+          // Categorize failures
+          if (errorCode === 100) {
+            invalidUsers++
+            console.log(`User ${conversation.participant_id} not found, marking as invalid`)
+          } else if (errorCode === 10) {
+            outsideWindow++
+            console.log(`User ${conversation.participant_id} outside messaging window`)
+          }
           
           // Save failed broadcast record
           await supabaseAdmin!
@@ -108,7 +168,8 @@ export async function POST(req: NextRequest) {
               message_tag: messageTag,
               recipient_id: conversation.participant_id,
               status: 'failed',
-              error_message: result.error?.message || 'Unknown error'
+              error_message: errorMessage,
+              error_code: errorCode
             })
         }
         
@@ -136,14 +197,29 @@ export async function POST(req: NextRequest) {
     const totalLeads = conversations.length
     const broadcastId = `broadcast_${Date.now()}_${pageId}`
     
+    // Calculate success rate
+    const totalAttempted = sent24h + sentWithTag + failed
+    const successRate = totalAttempted > 0 ? Math.round(((sent24h + sentWithTag) / totalAttempted) * 100) : 0
+    
     return NextResponse.json({
       success: true,
       totalLeads,
+      eligibleRecipients: eligibleConversations.length,
       sent24h,
       sentWithTag,
       failed,
       excluded,
-      broadcastId
+      invalidUsers,
+      outsideWindow,
+      successRate,
+      broadcastId,
+      summary: {
+        total: totalLeads,
+        eligible: eligibleConversations.length,
+        successful: sent24h + sentWithTag,
+        failed: failed,
+        successRate: `${successRate}%`
+      }
     })
     
   } catch (error) {

@@ -37,11 +37,22 @@ interface Page {
 interface BroadcastResult {
   success: boolean
   totalLeads: number
+  eligibleRecipients: number
   sent24h: number
   sentWithTag: number
   failed: number
   excluded: number
+  invalidUsers: number
+  outsideWindow: number
+  successRate: number
   broadcastId: string
+  summary: {
+    total: number
+    eligible: number
+    successful: number
+    failed: number
+    successRate: string
+  }
 }
 
 export default function BroadcastPage() {
@@ -195,11 +206,22 @@ export default function BroadcastPage() {
         setBroadcastResult({
           success: true,
           totalLeads: data.totalLeads || 0,
+          eligibleRecipients: data.eligibleRecipients || 0,
           sent24h: data.sent24h || 0,
           sentWithTag: data.sentWithTag || 0,
           failed: data.failed || 0,
           excluded: data.excluded || 0,
-          broadcastId: data.broadcastId || 'unknown'
+          invalidUsers: data.invalidUsers || 0,
+          outsideWindow: data.outsideWindow || 0,
+          successRate: data.successRate || 0,
+          broadcastId: data.broadcastId || 'unknown',
+          summary: data.summary || {
+            total: 0,
+            eligible: 0,
+            successful: 0,
+            failed: 0,
+            successRate: '0%'
+          }
         })
         setMessage('')
         setPreview('')
@@ -485,18 +507,44 @@ export default function BroadcastPage() {
                 <div className="flex items-start">
                   <CheckCircle className="h-5 w-5 text-green-600 mr-2 mt-0.5" />
                   <div className="flex-1">
-                    <p className="text-sm font-semibold text-green-800">Broadcast sent successfully!</p>
-                    <div className="mt-2 text-xs text-green-700 space-y-1">
-                      <p>• Total leads: {broadcastResult.totalLeads}</p>
-                      <p>• Sent (≤24h): {broadcastResult.sent24h}</p>
-                      <p>• Sent with tag (24h+): {broadcastResult.sentWithTag}</p>
-                      {broadcastResult.failed > 0 && (
-                        <p>• Failed: {broadcastResult.failed}</p>
-                      )}
-                      {broadcastResult.excluded > 0 && (
-                        <p>• Excluded: {broadcastResult.excluded}</p>
-                      )}
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-sm font-semibold text-green-800">Broadcast completed!</p>
+                      <span className={`px-2 py-1 text-xs rounded ${
+                        broadcastResult.successRate >= 80 ? 'bg-green-100 text-green-800' :
+                        broadcastResult.successRate >= 60 ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-red-100 text-red-800'
+                      }`}>
+                        {broadcastResult.successRate}% Success Rate
+                      </span>
                     </div>
+                    
+                    <div className="grid grid-cols-2 gap-4 text-xs">
+                      <div className="space-y-1">
+                        <p className="font-medium text-green-800">📊 Summary:</p>
+                        <p>• Total leads: {broadcastResult.totalLeads}</p>
+                        <p>• Eligible recipients: {broadcastResult.eligibleRecipients}</p>
+                        <p>• Successfully sent: {broadcastResult.sent24h + broadcastResult.sentWithTag}</p>
+                      </div>
+                      
+                      <div className="space-y-1">
+                        <p className="font-medium text-green-800">📤 Delivery Details:</p>
+                        <p>• Sent (≤24h): {broadcastResult.sent24h}</p>
+                        <p>• Sent with tag (24h+): {broadcastResult.sentWithTag}</p>
+                        <p>• Failed: {broadcastResult.failed}</p>
+                      </div>
+                    </div>
+                    
+                    {(broadcastResult.invalidUsers > 0 || broadcastResult.outsideWindow > 0) && (
+                      <div className="mt-3 p-2 bg-yellow-50 rounded border border-yellow-200">
+                        <p className="text-xs font-medium text-yellow-800 mb-1">⚠️ Issues Found:</p>
+                        {broadcastResult.invalidUsers > 0 && (
+                          <p className="text-xs text-yellow-700">• {broadcastResult.invalidUsers} invalid user IDs</p>
+                        )}
+                        {broadcastResult.outsideWindow > 0 && (
+                          <p className="text-xs text-yellow-700">• {broadcastResult.outsideWindow} users outside 24h window</p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
