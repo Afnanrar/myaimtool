@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Users, MessageSquare, Send, TrendingUp } from 'lucide-react'
+import { Users, MessageSquare, Send, TrendingUp, RefreshCw } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
 export default function DashboardPage() {
@@ -14,13 +14,86 @@ export default function DashboardPage() {
     recentMessages: 0
   })
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [webhookStatus, setWebhookStatus] = useState('Checking...')
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const router = useRouter()
   
   useEffect(() => {
     loadUserAndStats()
     checkWebhookStatus()
+    
+    // Set up real-time subscriptions
+    if (supabase) {
+      // Subscribe to pages changes
+      const pagesSubscription = supabase
+        .channel('dashboard-pages')
+        .on('postgres_changes', 
+          { event: '*', schema: 'public', table: 'pages' },
+          () => {
+            console.log('Pages changed, updating stats...')
+            loadStats()
+          }
+        )
+        .subscribe()
+
+      // Subscribe to conversations changes
+      const conversationsSubscription = supabase
+        .channel('dashboard-conversations')
+        .on('postgres_changes', 
+          { event: '*', schema: 'public', table: 'conversations' },
+          () => {
+            console.log('Conversations changed, updating stats...')
+            loadStats()
+          }
+        )
+        .subscribe()
+
+      // Subscribe to messages changes
+      const messagesSubscription = supabase
+        .channel('dashboard-messages')
+        .on('postgres_changes', 
+          { event: '*', schema: 'public', table: 'messages' },
+          () => {
+            console.log('Messages changed, updating stats...')
+            loadStats()
+          }
+        )
+        .subscribe()
+
+      // Subscribe to broadcasts changes
+      const broadcastsSubscription = supabase
+        .channel('dashboard-broadcasts')
+        .on('postgres_changes', 
+          { event: '*', schema: 'public', table: 'broadcasts' },
+          () => {
+            console.log('Broadcasts changed, updating stats...')
+            loadStats()
+          }
+        )
+        .subscribe()
+
+      // Cleanup subscriptions
+      return () => {
+        pagesSubscription.unsubscribe()
+        conversationsSubscription.unsubscribe()
+        messagesSubscription.unsubscribe()
+        broadcastsSubscription.unsubscribe()
+      }
+    }
   }, [])
+
+  // Periodic refresh as backup (every 30 seconds)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!refreshing) {
+        console.log('Periodic stats refresh...')
+        loadStats()
+      }
+    }, 30000) // 30 seconds
+
+    return () => clearInterval(interval)
+  }, [refreshing])
   
   const loadUserAndStats = async () => {
     try {
@@ -35,34 +108,50 @@ export default function DashboardPage() {
       setUser(userData)
       
       // Load stats
-      if (supabase) {
-        try {
-          const { data: pages } = await supabase.from('pages').select('id', { count: 'exact' })
-          const { data: conversations } = await supabase.from('conversations').select('id', { count: 'exact' })
-          const { data: broadcasts } = await supabase.from('broadcasts').select('id', { count: 'exact' })
-          
-          setStats({
-            totalPages: pages?.length || 0,
-            totalConversations: conversations?.length || 0,
-            totalBroadcasts: broadcasts?.length || 0,
-            recentMessages: 0
-          })
-        } catch (dbError) {
-          console.error('Database error:', dbError)
-          // Set default stats if database fails
-          setStats({
-            totalPages: 0,
-            totalConversations: 0,
-            totalBroadcasts: 0,
-            recentMessages: 0
-          })
-        }
-      }
+      await loadStats()
     } catch (error) {
       console.error('Failed to load data:', error)
       // Don't redirect on network errors, just show empty state
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadStats = async () => {
+    if (!supabase) return
+    
+    try {
+      setRefreshing(true)
+      
+      // Get current stats from database
+      const { data: pages } = await supabase.from('pages').select('id', { count: 'exact' })
+      const { data: conversations } = await supabase.from('conversations').select('id', { count: 'exact' })
+      const { data: broadcasts } = await supabase.from('broadcasts').select('id', { count: 'exact' })
+      
+      // Get recent messages (last 24 hours)
+      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+      const { data: recentMessages } = await supabase
+        .from('messages')
+        .select('id')
+        .gte('created_at', twentyFourHoursAgo)
+        .count()
+      
+      const newStats = {
+        totalPages: pages?.length || 0,
+        totalConversations: conversations?.length || 0,
+        totalBroadcasts: broadcasts?.length || 0,
+        recentMessages: recentMessages?.count || 0
+      }
+      
+      setStats(newStats)
+      setLastUpdated(new Date())
+      
+      console.log('Stats updated:', newStats)
+    } catch (dbError) {
+      console.error('Database error:', dbError)
+      // Keep existing stats if database fails
+    } finally {
+      setRefreshing(false)
     }
   }
   
@@ -121,8 +210,27 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-gray-50">
       <div className="p-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-600 mt-2">Welcome back, {user?.name || 'User'}</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+              <p className="text-gray-600 mt-2">Welcome back, {user?.name || 'User'}</p>
+            </div>
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={loadStats}
+                disabled={refreshing}
+                className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+                {refreshing ? 'Updating...' : 'Refresh Stats'}
+              </button>
+              {lastUpdated && (
+                <div className="text-sm text-gray-500">
+                  Last updated: {lastUpdated.toLocaleTimeString()}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
         
         {loading ? (
@@ -143,7 +251,12 @@ export default function DashboardPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-gray-600">{stat.title}</p>
-                    <p className="text-2xl font-bold text-gray-900 mt-2">{stat.value}</p>
+                    <div className="flex items-center mt-2">
+                      <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
+                      {refreshing && (
+                        <RefreshCw className="h-4 w-4 text-blue-500 ml-2 animate-spin" />
+                      )}
+                    </div>
                   </div>
                   <div className={`p-3 rounded-full ${stat.bgColor}`}>
                     <stat.icon className={`h-6 w-6 ${stat.color}`} />
@@ -214,6 +327,10 @@ export default function DashboardPage() {
                 }`}>
                   {webhookStatus}
                 </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-700">Stats Auto-Update</span>
+                <span className="px-2 py-1 bg-green-100 text-green-800 text-sm rounded">Active</span>
               </div>
             </div>
           </div>
