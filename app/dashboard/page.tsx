@@ -14,10 +14,12 @@ export default function DashboardPage() {
     recentMessages: 0
   })
   const [loading, setLoading] = useState(true)
+  const [webhookStatus, setWebhookStatus] = useState('Checking...')
   const router = useRouter()
   
   useEffect(() => {
     loadUserAndStats()
+    checkWebhookStatus()
   }, [])
   
   const loadUserAndStats = async () => {
@@ -61,6 +63,26 @@ export default function DashboardPage() {
       // Don't redirect on network errors, just show empty state
     } finally {
       setLoading(false)
+    }
+  }
+  
+  // Check webhook status
+  const checkWebhookStatus = async () => {
+    try {
+      const response = await fetch('/api/webhook-test')
+      const data = await response.json()
+      
+      // Check if we've received messages recently
+      if (data.recent_messages_count > 0) {
+        setWebhookStatus('Active')
+      } else if (data.webhook_configured) {
+        setWebhookStatus('Configured')
+      } else {
+        setWebhookStatus('Pending Setup')
+      }
+    } catch (error) {
+      setWebhookStatus('Error')
+      console.error('Webhook status check failed:', error)
     }
   }
   
@@ -184,7 +206,14 @@ export default function DashboardPage() {
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-gray-700">Webhook</span>
-                <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-sm rounded">Pending Setup</span>
+                <span className={`px-2 py-1 text-sm rounded ${
+                  webhookStatus === 'Active' ? 'bg-green-100 text-green-800' : 
+                  webhookStatus === 'Configured' ? 'bg-blue-100 text-blue-800' :
+                  webhookStatus === 'Error' ? 'bg-red-100 text-red-800' :
+                  'bg-yellow-100 text-yellow-800'
+                }`}>
+                  {webhookStatus}
+                </span>
               </div>
             </div>
           </div>
