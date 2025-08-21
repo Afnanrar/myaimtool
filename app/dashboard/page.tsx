@@ -130,17 +130,16 @@ export default function DashboardPage() {
       
       // Get recent messages (last 24 hours)
       const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-      const { data: recentMessages } = await supabase
+      const { data: recentMessages, count: recentMessagesCount } = await supabase
         .from('messages')
-        .select('id')
+        .select('id', { count: 'exact' })
         .gte('created_at', twentyFourHoursAgo)
-        .count()
       
       const newStats = {
         totalPages: pages?.length || 0,
         totalConversations: conversations?.length || 0,
         totalBroadcasts: broadcasts?.length || 0,
-        recentMessages: recentMessages?.count || 0
+        recentMessages: recentMessagesCount || 0
       }
       
       setStats(newStats)
