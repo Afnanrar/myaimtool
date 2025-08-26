@@ -651,7 +651,7 @@ export default function InboxPage() {
         
         setError('')
         
-        // Scroll to bottom after loading messages
+        // Scroll to recent messages (bottom) for new conversations
         setTimeout(() => scrollToBottom(), 100)
       } else {
         setMessages([])
@@ -700,7 +700,7 @@ export default function InboxPage() {
             : conv
         ))
         
-        // Scroll to bottom after loading messages silently
+        // Scroll to recent messages for silent loading
         setTimeout(() => scrollToBottom(), 100)
       }
     } catch (error: any) {
@@ -1114,8 +1114,8 @@ export default function InboxPage() {
               {loadingMessages ? (
                 <div className="flex items-center justify-center h-full">
                   <div className="text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
-                    <p className="text-gray-500">Loading messages...</p>
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500 mx-auto mb-2"></div>
+                    <p className="text-gray-400 text-sm">Loading recent messages...</p>
                   </div>
                 </div>
               ) : error ? (

@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
       .from('messages')
       .select('*')
       .eq('conversation_id', conversationId)
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: false })
       .limit(100)
     
     // Get conversation details
