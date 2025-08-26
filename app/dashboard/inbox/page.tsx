@@ -613,12 +613,19 @@ export default function InboxPage() {
   }
 
   const selectConversation = (conversation: any) => {
-    setSelectedConversation(conversation)
-    setNewMessageText('') // Clear message input when switching conversations
-    setError('') // Clear any previous errors
-    setShouldAutoScroll(true) // Reset auto-scroll when switching conversations
+    // Immediately clear previous conversation data to prevent confusion
+    setMessages([])
+    setError('')
+    setNewMessageText('')
+    setShouldAutoScroll(true)
     
-    // Always load messages to ensure correct order (prevents blinking)
+    // Set the new conversation
+    setSelectedConversation(conversation)
+    
+    // Show loading state immediately
+    setLoadingMessages(true)
+    
+    // Load messages for the new conversation
     loadMessages(conversation)
   }
 
@@ -676,12 +683,10 @@ export default function InboxPage() {
         
         setError('')
         
-        // Set messages after a tiny delay to ensure smooth rendering
-        setTimeout(() => {
-          setMessages(reversedMessages)
-          // Force scroll to recent messages for new conversations
-          setTimeout(() => forceScrollToBottom(), 50)
-        }, 50)
+        // Set messages immediately for instant display
+        setMessages(reversedMessages)
+        // Force scroll to recent messages for new conversations
+        setTimeout(() => forceScrollToBottom(), 25)
       } else {
         setMessages([])
         // Cache empty messages array
@@ -1059,13 +1064,20 @@ export default function InboxPage() {
                     <h3 className="font-semibold text-gray-900">
                       {selectedConversation.participant_name || 'Unknown User'}
                     </h3>
-                                          <div className="flex items-center gap-2">
-                        <p className="text-sm text-gray-500">Facebook Messenger</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm text-gray-500">Facebook Messenger</p>
+                      {loadingMessages ? (
+                        <div className="flex items-center gap-1">
+                          <div className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+                          <span className="text-xs text-blue-600">Loading messages...</span>
+                        </div>
+                      ) : (
                         <div className="flex items-center gap-1">
                           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                           <span className="text-xs text-green-600">Fast Sync (2s)</span>
                         </div>
-                      </div>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -1101,6 +1113,16 @@ export default function InboxPage() {
                   </button>
                 </div>
               </div>
+              
+              {/* Loading Indicator for Conversation Switch */}
+              {loadingMessages && (
+                <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800">
+                  <div className="flex items-center justify-center">
+                    <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin mr-2"></div>
+                    <span>Loading conversation with {selectedConversation?.participant_name}...</span>
+                  </div>
+                </div>
+              )}
               
               {/* Success/Error Messages */}
               {successMessage && (
