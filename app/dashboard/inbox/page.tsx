@@ -203,7 +203,7 @@ export default function InboxPage() {
         if (syncResponse.ok && syncData.newMessages && syncData.newMessages.length > 0) {
           console.log('Immediate sync found new messages:', syncData.newMessages.length)
           // Reload messages to show new ones
-          loadMessagesSilently(selectedConversation, true)
+          loadMessages(selectedConversation, true)
           // Scroll to bottom after immediate sync
           setTimeout(() => scrollToBottom(), 200)
         }
@@ -456,22 +456,9 @@ export default function InboxPage() {
   const handleNewMessage = (newMessage: any) => {
     console.log('Handling new message:', newMessage)
     
-    // Track last update time for periodic refresh
-    ;(window as any).lastMessageUpdate = Date.now()
-    
-    // Update message cache
-    setMessageCache(prev => {
-      const conversationId = newMessage.conversation_id
-      const existingMessages = prev[conversationId] || []
-      
-      return {
-        ...prev,
-        [conversationId]: [...existingMessages, newMessage]
-      }
-    })
-    
-    // If this conversation is currently open, update the messages display
+    // Only update if this is for the currently selected conversation
     if (selectedConversation?.id === newMessage.conversation_id) {
+      // Add new message to current display
       setMessages(prev => [...prev, newMessage])
       // Scroll to bottom to show new message
       setTimeout(() => forceScrollToBottom(), 100)
@@ -542,12 +529,8 @@ export default function InboxPage() {
               [conv.id]: reversedMessages
             }))
             
-            // If this conversation is currently open, update the display
-            if (selectedConversation?.id === conv.id) {
-              setMessages(reversedMessages)
-              // Scroll to bottom to show new messages
-              setTimeout(() => forceScrollToBottom(), 100)
-            }
+            // Don't update current conversation display here - let the main loadMessages handle it
+            // This prevents multiple sources from updating the same conversation
             
             // Update conversation list
             setConversations(prev => prev.map(c => {
@@ -625,13 +608,30 @@ export default function InboxPage() {
     // Show loading state immediately
     setLoadingMessages(true)
     
-    // Load messages for the new conversation
+    // Load messages for the new conversation (single source of truth)
     loadMessages(conversation)
+    
+    // Cancel any ongoing background operations for previous conversation
+    if ((window as any).currentConversationId !== conversation.id) {
+      (window as any).currentConversationId = conversation.id
+      // Clear any pending timeouts
+      if ((window as any).messageUpdateTimeout) {
+        clearTimeout((window as any).messageUpdateTimeout)
+        ;(window as any).messageUpdateTimeout = null
+      }
+    }
   }
 
   const loadMessages = async (conversation: any, forceRefresh = false) => {
     if (!conversation || !selectedPage) return
     
+    // Prevent multiple simultaneous loading operations
+    if ((window as any).isLoadingMessages) {
+      console.log('Message loading already in progress, skipping...')
+      return
+    }
+    
+    ;(window as any).isLoadingMessages = true
     setLoadingMessages(true)
     setError('')
     
@@ -702,55 +702,12 @@ export default function InboxPage() {
       setMessages([])
     } finally {
       setLoadingMessages(false)
+      ;(window as any).isLoadingMessages = false
     }
   }
 
-  const loadMessagesSilently = async (conversation: any, forceRefresh = false) => {
-    if (!conversation || !selectedPage) return
-    
-    try {
-      // Load messages for the selected conversation without showing loading state
-      const url = `/api/facebook/messages?conversationId=${conversation.id}${forceRefresh ? '&refresh=true' : ''}`
-      const response = await fetch(url)
-      const data = await response.json()
-      
-      if (!response.ok) {
-        console.error('Failed to load messages silently:', data.error)
-        return
-      }
-      
-      if (data.messages && data.messages.length > 0) {
-        // Reverse messages to show oldest first (for proper chat display)
-        const reversedMessages = [...data.messages].reverse()
-        
-        // Only update messages if they're different to prevent unnecessary re-renders
-        setMessages(prev => {
-          if (JSON.stringify(prev) !== JSON.stringify(reversedMessages)) {
-            return reversedMessages
-          }
-          return prev
-        })
-        
-        // Cache the reversed messages for instant switching
-        setMessageCache(prev => ({
-          ...prev,
-          [conversation.id]: reversedMessages
-        }))
-        
-        // Update conversation with cache timestamp
-        setConversations(prev => prev.map(conv => 
-          conv.id === conversation.id 
-            ? { ...conv, lastCacheUpdate: Date.now() }
-            : conv
-        ))
-        
-        // Always scroll to bottom for new conversations to show recent messages
-        setTimeout(() => forceScrollToBottom(), 100)
-      }
-    } catch (error: any) {
-      console.error('Error loading messages silently:', error)
-    }
-  }
+  // Removed loadMessagesSilently to prevent multiple message loading sources
+  // All message loading now goes through the single loadMessages function
 
   const sendMessage = async () => {
     if (!selectedConversation || !selectedPage || !newMessageText.trim()) return
