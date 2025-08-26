@@ -778,15 +778,14 @@ export default function InboxPage() {
       setTimeout(() => forceScrollToBottom(), 100)
     
     try {
-      const response = await fetch('/api/facebook/messages/realtime', {
+      const response = await fetch('/api/facebook/messages', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           conversationId: selectedConversation.id,
-          message: messageText,
-          pageId: selectedPage.id || selectedPage.facebook_page_id
+          message: messageText
         })
       })
       
@@ -1114,7 +1113,20 @@ export default function InboxPage() {
               )}
               {error && (
                 <div className="mt-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-800">
-                  {error}
+                  <div className="flex items-center justify-between">
+                    <span>{error}</span>
+                    <button
+                      onClick={() => {
+                        setError('')
+                        if (selectedConversation) {
+                          loadMessages(selectedConversation)
+                        }
+                      }}
+                      className="px-3 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600 transition-colors"
+                    >
+                      Retry
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -1213,32 +1225,52 @@ export default function InboxPage() {
                     {sendingMessage ? 'Sending...' : 'Send'}
                   </button>
                   
-                  {/* Debug button - only show in development */}
+                  {/* Debug buttons - only show in development */}
                   {process.env.NODE_ENV === 'development' && (
-                    <button
-                      onClick={async () => {
-                        try {
-                          const response = await fetch('/api/facebook/test-send', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              conversationId: selectedConversation.id,
-                              pageId: selectedPage.id
+                    <>
+                      <button
+                        onClick={async () => {
+                          try {
+                            const response = await fetch('/api/facebook/test-send', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                conversationId: selectedConversation.id,
+                                pageId: selectedPage.id
+                              })
                             })
-                          })
-                          const data = await response.json()
-                          console.log('Facebook API Test Result:', data)
-                          alert(`Test Result: ${JSON.stringify(data, null, 2)}`)
-                        } catch (error: any) {
-                          console.error('Test failed:', error)
-                          alert('Test failed: ' + error.message)
-                        }
-                      }}
-                      className="px-3 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 text-xs"
-                      title="Test Facebook API Configuration"
-                    >
-                      Test API
-                    </button>
+                            const data = await response.json()
+                            console.log('Facebook API Test Result:', data)
+                            alert(`Test Result: ${JSON.stringify(data, null, 2)}`)
+                          } catch (error: any) {
+                            console.error('Test failed:', error)
+                            alert('Test failed: ' + error.message)
+                          }
+                        }}
+                        className="px-3 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 text-xs"
+                        title="Test Facebook API Configuration"
+                      >
+                        Test API
+                      </button>
+                      
+                      <button
+                        onClick={async () => {
+                          try {
+                            const response = await fetch('/api/test-message')
+                            const data = await response.json()
+                            console.log('Test Message Result:', data)
+                            alert(`Test Message Result: ${JSON.stringify(data, null, 2)}`)
+                          } catch (error: any) {
+                            console.error('Test message failed:', error)
+                            alert('Test message failed: ' + error.message)
+                          }
+                        }}
+                        className="px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 text-xs"
+                        title="Test Message Sending"
+                      >
+                        Test Msg
+                      </button>
+                    </>
                   )}
 
               </div>

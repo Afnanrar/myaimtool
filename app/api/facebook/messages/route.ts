@@ -1,66 +1,103 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { FacebookAPI } from '@/lib/facebook'
 import { supabaseAdmin } from '@/lib/supabase'
-import { verifyAuth } from '@/lib/auth'
+import { cookies } from 'next/headers'
+import jwt from 'jsonwebtoken'
 
 export async function POST(req: NextRequest) {
-  // Check if required environment variables are set
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return NextResponse.json({ error: 'Service not configured' }, { status: 500 })
-  }
-  
-  const auth = await verifyAuth(req)
-  if (!auth) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-  
-  const { conversationId, message } = await req.json()
-  
   try {
+    const { conversationId, message } = await req.json()
+    
+    if (!conversationId || !message) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+    }
+    
+    // Get auth token
+    const cookieStore = cookies()
+    const token = cookieStore.get('auth-token')
+    
+    if (!token) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+    }
+    
+    const decoded = jwt.verify(
+      token.value,
+      process.env.JWT_SECRET || 'your-secret-key-change-this'
+    ) as any
+    
     if (!supabaseAdmin) {
       return NextResponse.json({ error: 'Database not configured' }, { status: 500 })
     }
     
-    // Get conversation and page details
+    // Get conversation details
     const { data: conversation } = await supabaseAdmin
       .from('conversations')
-      .select(`
-        *,
-        pages!inner(
-          access_token,
-          facebook_page_id
-        )
-      `)
+      .select('*, page:pages(*)')
       .eq('id', conversationId)
       .single()
     
-    if (!conversation) {
+    if (!conversation || !conversation.page) {
       return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
     }
     
-    // Send message via Facebook API
-    const fb = new FacebookAPI(conversation.pages.access_token)
-    const result = await fb.sendMessage(
-      conversation.participant_id,
-      message,
-      conversation.pages.access_token
+    // Send message using page access token
+    const response = await fetch(
+      `https://graph.facebook.com/v19.0/me/messages`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          recipient: { id: conversation.participant_id },
+          message: { text: message },
+          messaging_type: 'RESPONSE',
+          access_token: conversation.page.access_token // Add token here instead of header
+        })
+      }
     )
     
-    // Store message in database
-    await supabaseAdmin
+    const data = await response.json()
+    
+    if (data.error) {
+      console.error('Facebook API Error:', data.error)
+      return NextResponse.json({ 
+        error: `Failed to send message: ${data.error.message}`,
+        details: data.error
+      }, { status: 400 })
+    }
+    
+    // Save message to database
+    await supabaseAdmin!
       .from('messages')
       .insert({
         conversation_id: conversationId,
-        facebook_message_id: result.message_id || `msg_${Date.now()}`,
-        sender_id: conversation.pages.facebook_page_id,
+        facebook_message_id: data.message_id,
+        sender_id: conversation.page.facebook_page_id,
         message_text: message,
-        is_from_page: true
+        is_from_page: true,
+        created_at: new Date().toISOString()
       })
     
-    return NextResponse.json({ success: true, result })
-  } catch (error) {
-    console.error('Failed to send message:', error)
-    return NextResponse.json({ error: 'Failed to send message' }, { status: 500 })
+    // Update conversation last message time
+    await supabaseAdmin!
+      .from('conversations')
+      .update({ 
+        last_message_time: new Date().toISOString(),
+        unread_count: 0 
+      })
+      .eq('id', conversationId)
+    
+    return NextResponse.json({ 
+      success: true,
+      message_id: data.message_id 
+    })
+    
+  } catch (error: any) {
+    console.error('Error sending message:', error)
+    return NextResponse.json({ 
+      error: 'Failed to send message',
+      details: error.message 
+    }, { status: 500 })
   }
 }
 
