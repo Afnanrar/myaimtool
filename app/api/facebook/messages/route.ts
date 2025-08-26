@@ -182,7 +182,7 @@ export async function GET(req: NextRequest) {
     console.log('Fetching fresh messages from Facebook for conversation:', conversation.id)
     
     // Try to fetch messages from Facebook
-    const messagesUrl = `https://graph.facebook.com/v19.0/${conversation.facebook_conversation_id}/messages?fields=id,message,from,created_time&limit=50&access_token=${page.access_token}`
+    const messagesUrl = `https://graph.facebook.com/v19.0/${conversation.facebook_conversation_id}/messages?fields=id,message,from,created_time&limit=100&access_token=${page.access_token}`
     
     const response = await fetch(messagesUrl)
     const data = await response.json()

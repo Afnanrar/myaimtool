@@ -688,7 +688,7 @@ export default function InboxPage() {
       
       // Load messages from API with pagination
       const currentPage = loadOlder ? messagePage + 1 : 1
-      const pageSize = 30 // Load 30 messages per page
+      const pageSize = loadOlder ? 30 : 100 // Load more messages initially for new conversations
       const url = `/api/facebook/messages?conversationId=${conversation.id}&page=${currentPage}&pageSize=${pageSize}${forceRefresh ? '&refresh=true' : ''}`
       
       const response = await fetch(url)
@@ -703,6 +703,8 @@ export default function InboxPage() {
       }
       
       if (data.messages && data.messages.length > 0) {
+        console.log(`API returned ${data.messages.length} messages, total: ${data.total}, page: ${currentPage}, pageSize: ${pageSize}`)
+        
         // For new conversations, show latest messages first
         // For loading older messages, prepend them to existing messages
         let newMessages: any[] = []
@@ -729,7 +731,10 @@ export default function InboxPage() {
         }
         
         // Check if there are more messages to load
-        setHasMoreMessages(data.messages.length === pageSize && newMessages.length < data.total)
+        const hasMore = data.messages.length === pageSize && newMessages.length < (data.total || 0)
+        setHasMoreMessages(hasMore)
+        
+        console.log(`Loaded ${newMessages.length} messages, total: ${data.total}, hasMore: ${hasMore}`)
         
         // Cache the messages
         setMessageCache(prev => ({
@@ -773,7 +778,13 @@ export default function InboxPage() {
 
   // Function to load older messages (infinite scroll)
   const loadOlderMessages = async () => {
-    if (!selectedConversation || isLoadingOlderMessages || !hasMoreMessages || !oldestLoadedTime) return
+    if (!selectedConversation || isLoadingOlderMessages) return
+    
+    // Check if we should load more messages
+    if (!hasMoreMessages && !oldestLoadedTime) {
+      console.log('No more messages to load or no oldest time available')
+      return
+    }
     
     console.log('Loading older messages via infinite scroll...')
     setIsLoadingOlderMessages(true)
@@ -1304,6 +1315,24 @@ export default function InboxPage() {
                   >
                     <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full"></div>
                   </button>
+                  
+                  {/* Debug button to check message count */}
+                  <button
+                    onClick={async () => {
+                      try {
+                        const response = await fetch(`/api/facebook/messages?conversationId=${selectedConversation.id}&pageSize=1`)
+                        const data = await response.json()
+                        console.log('Debug - Total messages in conversation:', data.total)
+                        alert(`Total messages in this conversation: ${data.total}`)
+                      } catch (error) {
+                        console.error('Error checking message count:', error)
+                      }
+                    }}
+                    className="p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                    title="Check total message count"
+                  >
+                    <span className="text-xs">Count</span>
+                  </button>
                 </div>
               </div>
               
@@ -1387,6 +1416,18 @@ export default function InboxPage() {
                           Scroll up to load more messages
                         </div>
                       )}
+                    </div>
+                  )}
+                  
+                  {/* Manual Load More Button */}
+                  {hasMoreMessages && !isLoadingOlderMessages && (
+                    <div className="text-center py-2">
+                      <button
+                        onClick={loadOlderMessages}
+                        className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm"
+                      >
+                        Load More Messages
+                      </button>
                     </div>
                   )}
                   
