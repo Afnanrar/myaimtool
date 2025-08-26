@@ -75,113 +75,113 @@ export default function InboxPage() {
 
   // DISABLED: Real-time message polling causing confusion
   // useEffect(() => {
-    if (!selectedPage || !selectedConversation) return
+    // if (!selectedPage || !selectedConversation) return
 
-    // Clear any existing interval
-    if (realtimeInterval) {
-      clearInterval(realtimeInterval)
-    }
+    // // Clear any existing interval
+    // if (realtimeInterval) {
+    //   clearInterval(realtimeInterval)
+    // }
 
-    // Set up real-time polling for the active conversation
-    const interval = setInterval(async () => {
-      try {
-        // Always sync new messages from Facebook
-        const syncResponse = await fetch(`/api/facebook/messages/sync?conversationId=${selectedConversation.id}&pageId=${selectedPage.id}`)
-        const syncData = await syncResponse.json()
+    // // Set up real-time polling for the active conversation
+    // const interval = setInterval(async () => {
+    //   try {
+    //     // Always sync new messages from Facebook
+    //     const syncResponse = await fetch(`/api/facebook/messages/sync?conversationId=${selectedConversation.id}&pageId=${selectedPage.id}`)
+    //     const syncData = await syncResponse.json()
         
-        if (syncResponse.ok) {
-          // Get updated messages from database
-          const messagesResponse = await fetch(`/api/facebook/messages/realtime?conversationId=${selectedConversation.id}&pageId=${selectedPage.id}`)
-          const messagesData = await messagesResponse.json()
-          
-          if (messagesResponse.ok && messagesData.messages) {
-            // Check if we have new messages
-            const currentMessageIds = new Set(messages.map(m => m.id))
-            const newMessages = messagesData.messages.filter((m: any) => !currentMessageIds.has(m.id))
-            
-            if (newMessages.length > 0) {
-              console.log('New incoming messages found:', newMessages.length)
-            }
-            
-            // Always update messages to ensure latest state
-            if (newMessages.length > 0) {
-              setMessages(messagesData.messages)
-              
-              // Update message cache
-              setMessageCache(prev => ({
-                ...prev,
-                [selectedConversation.id]: messagesData.messages
-              }))
-              
-              // Update conversation list and filter out placeholders
-              setConversations(prev => {
-                const updated = prev.map(conv => 
-                  conv.id === selectedConversation.id 
-                    ? { ...conv, last_message_time: new Date().toISOString() }
-                    : conv
-                )
-                
-                // Filter out placeholder conversations
-                return updated.filter((conv: any) => {
-                  if (conv.participant_name === 'Facebook User' || 
-                      conv.participant_name === 'Unknown User' ||
-                      conv.participant_name === 'Test User') {
-                    return false
-                  }
-                  
-                  if (!conv.participant_id || !conv.facebook_conversation_id) {
-                    return false
-                  }
-                  
-                  if (conv.page_id !== selectedPage.id) {
-                    return false
-                  }
-                  
-                  return true
-                })
-              })
-              
-              // Scroll to bottom when new messages arrive
-              setTimeout(() => scrollToBottom(), 100)
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Error in real-time polling:', error)
-      }
-    }, 2000) // Check every 2 seconds for active conversation
-
-    // Also do an immediate sync when conversation is selected
-    const immediateSync = async () => {
-      try {
-        const syncResponse = await fetch(`/api/facebook/messages/sync?conversationId=${selectedConversation.id}&pageId=${selectedPage.id}`)
-        const syncData = await syncResponse.json()
+    //     if (syncResponse.ok) {
+    //       // Get updated messages from database
+    //       const messagesResponse = await fetch(`/api/facebook/messages/realtime?conversationId=${selectedConversation.id}&pageId=${selectedPage.id}`)
+    //       const messagesData = await messagesResponse.json()
         
-        if (syncResponse.ok && syncData.newMessages && syncData.newMessages.length > 0) {
-          console.log('Immediate sync found new messages:', syncData.newMessages.length)
-          // Reload messages to show new ones
-          loadMessages(selectedConversation, true)
-          // Scroll to bottom after immediate sync
-          setTimeout(() => scrollToBottom(), 200)
-        }
-      } catch (error) {
-        console.error('Immediate sync error:', error)
-      }
-    }
+    //       if (messagesResponse.ok && messagesData.messages) {
+    //         // Check if we have new messages
+    //         const currentMessageIds = new Set(messages.map(m => m.id))
+    //         const newMessages = messagesData.messages.filter((m: any) => !currentMessageIds.has(m.id))
+        
+    //         if (newMessages.length > 0) {
+    //           console.log('New incoming messages found:', newMessages.length)
+    //         }
+        
+    //         // Always update messages to ensure latest state
+    //         if (newMessages.length > 0) {
+    //           setMessages(messagesData.messages)
+        
+    //           // Update message cache
+    //           setMessageCache(prev => ({
+    //             ...prev,
+    //             [selectedConversation.id]: messagesData.messages
+    //           }))
+        
+    //           // Update conversation list and filter out placeholders
+    //           setConversations(prev => {
+    //             const updated = prev.map(conv => 
+    //               conv.id === selectedConversation.id 
+    //                 ? { ...conv, last_message_time: new Date().toISOString() }
+    //                 : conv
+    //             )
+        
+    //             // Filter out placeholder conversations
+    //             return updated.filter((conv: any) => {
+    //               if (conv.participant_name === 'Facebook User' || 
+    //                   conv.participant_name === 'Unknown User' ||
+    //                   conv.participant_name === 'Test User') {
+    //                 return false
+    //               }
+        
+    //               if (!conv.participant_id || !conv.facebook_conversation_id) {
+    //                 return false
+    //               }
+        
+    //               if (conv.page_id !== selectedPage.id) {
+    //                 return false
+    //               }
+        
+    //               return true
+    //             })
+    //           })
+        
+    //           // Scroll to bottom when new messages arrive
+    //           setTimeout(() => scrollToBottom(), 100)
+    //         }
+    //       }
+    //     }
+    //   } catch (error) {
+    //     console.error('Error in real-time polling:', error)
+    //   }
+    // }, 2000) // Check every 2 seconds for active conversation
 
-    // Run immediate sync after a short delay
-    const immediateTimeout = setTimeout(immediateSync, 1000)
+    // // Also do an immediate sync when conversation is selected
+    // const immediateSync = async () => {
+    //   try {
+    //     const syncResponse = await fetch(`/api/facebook/messages/sync?conversationId=${selectedConversation.id}&pageId=${selectedPage.id}`)
+    //     const syncData = await syncResponse.json()
+        
+    //     if (syncResponse.ok && syncData.newMessages && syncData.newMessages.length > 0) {
+    //       console.log('Immediate sync found new messages:', syncData.newMessages.length)
+    //       // Reload messages to show new ones
+    //       loadMessages(selectedConversation, true)
+    //       // Scroll to bottom after immediate sync
+    //       setTimeout(() => scrollToBottom(), 200)
+    //     }
+    //   } catch (error) {
+    //     console.error('Immediate sync error:', error)
+    //   }
+    // }
 
-    setRealtimeInterval(interval)
+    // // Run immediate sync after a short delay
+    // const immediateTimeout = setTimeout(immediateSync, 1000)
 
-    return () => {
-      if (interval) {
-        clearInterval(interval)
-      }
-      if (immediateTimeout) {
-        clearTimeout(immediateTimeout)
-      }
-    }
+    // setRealtimeInterval(interval)
+
+    // return () => {
+    //   if (interval) {
+    //     clearInterval(interval)
+    //   }
+    //   if (immediateTimeout) {
+    //     clearTimeout(immediateTimeout)
+    //   }
+    // }
   // }, [selectedPage, selectedConversation])
 
   // DISABLED: Background sync causing confusion
