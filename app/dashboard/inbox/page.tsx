@@ -618,18 +618,8 @@ export default function InboxPage() {
     setError('') // Clear any previous errors
     setShouldAutoScroll(true) // Reset auto-scroll when switching conversations
     
-    // Show cached messages instantly if available
-    if (messageCache[conversation.id]) {
-      setMessages(messageCache[conversation.id])
-      // Force scroll to recent messages when switching conversations
-      setTimeout(() => forceScrollToBottom(), 50)
-      
-      // Load fresh data in background
-      loadMessagesSilently(conversation, true)
-    } else {
-      // Load messages normally if no cache
-      loadMessages(conversation)
-    }
+    // Always load messages to ensure correct order (prevents blinking)
+    loadMessages(conversation)
   }
 
   const loadMessages = async (conversation: any, forceRefresh = false) => {
@@ -639,20 +629,8 @@ export default function InboxPage() {
     setError('')
     
     try {
-      // First try to load from cache for instant response
-      if (!forceRefresh && messageCache[conversation.id]) {
-        setMessages(messageCache[conversation.id])
-        setLoadingMessages(false)
-        
-        // Scroll to recent messages immediately for instant experience
-        scrollToBottom()
-        
-        // Load fresh data in background if cache is old
-        if (Date.now() - (conversation.lastCacheUpdate || 0) > 30000) { // 30 seconds
-          loadMessagesSilently(conversation, true)
-        }
-        return
-      }
+      // Skip cache to prevent blinking - always load fresh for correct order
+      // This ensures messages are displayed in the right order from the start
       
       // If force refresh, sync new messages from Facebook first
       if (forceRefresh) {
@@ -682,9 +660,8 @@ export default function InboxPage() {
       if (data.messages && data.messages.length > 0) {
         // Reverse messages to show oldest first (for proper chat display)
         const reversedMessages = [...data.messages].reverse()
-        setMessages(reversedMessages)
         
-        // Cache the reversed messages with timestamp
+        // Cache the reversed messages with timestamp first
         setMessageCache(prev => ({
           ...prev,
           [conversation.id]: reversedMessages
@@ -699,8 +676,12 @@ export default function InboxPage() {
         
         setError('')
         
-        // Force scroll to recent messages for new conversations
-        setTimeout(() => forceScrollToBottom(), 100)
+        // Set messages after a tiny delay to ensure smooth rendering
+        setTimeout(() => {
+          setMessages(reversedMessages)
+          // Force scroll to recent messages for new conversations
+          setTimeout(() => forceScrollToBottom(), 50)
+        }, 50)
       } else {
         setMessages([])
         // Cache empty messages array
@@ -736,7 +717,14 @@ export default function InboxPage() {
       if (data.messages && data.messages.length > 0) {
         // Reverse messages to show oldest first (for proper chat display)
         const reversedMessages = [...data.messages].reverse()
-        setMessages(reversedMessages)
+        
+        // Only update messages if they're different to prevent unnecessary re-renders
+        setMessages(prev => {
+          if (JSON.stringify(prev) !== JSON.stringify(reversedMessages)) {
+            return reversedMessages
+          }
+          return prev
+        })
         
         // Cache the reversed messages for instant switching
         setMessageCache(prev => ({
@@ -1148,7 +1136,7 @@ export default function InboxPage() {
                 <div className="flex items-center justify-center h-full">
                   <div className="text-center">
                     <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500 mx-auto mb-2"></div>
-                    <p className="text-gray-400 text-sm">Loading recent messages...</p>
+                    <p className="text-gray-400 text-sm">Loading messages in correct order...</p>
                   </div>
                 </div>
               ) : error ? (
