@@ -587,6 +587,25 @@ export default function InboxPage() {
     }
   }
 
+  const selectConversation = (conversation: any) => {
+    setSelectedConversation(conversation)
+    setNewMessageText('') // Clear message input when switching conversations
+    setError('') // Clear any previous errors
+    
+    // Show cached messages instantly if available
+    if (messageCache[conversation.id]) {
+      setMessages(messageCache[conversation.id])
+      // Scroll to recent messages immediately for professional experience
+      scrollToBottom()
+      
+      // Load fresh data in background
+      loadMessagesSilently(conversation, true)
+    } else {
+      // Load messages normally if no cache
+      loadMessages(conversation)
+    }
+  }
+
   const loadMessages = async (conversation: any, forceRefresh = false) => {
     if (!conversation || !selectedPage) return
     
@@ -599,8 +618,8 @@ export default function InboxPage() {
         setMessages(messageCache[conversation.id])
         setLoadingMessages(false)
         
-        // Scroll to bottom after loading from cache
-        setTimeout(() => scrollToBottom(), 100)
+        // Scroll to recent messages immediately for instant experience
+        scrollToBottom()
         
         // Load fresh data in background if cache is old
         if (Date.now() - (conversation.lastCacheUpdate || 0) > 30000) { // 30 seconds
@@ -651,8 +670,8 @@ export default function InboxPage() {
         
         setError('')
         
-        // Scroll to recent messages (bottom) for new conversations
-        setTimeout(() => scrollToBottom(), 100)
+        // Scroll to recent messages immediately for professional experience
+        scrollToBottom()
       } else {
         setMessages([])
         // Cache empty messages array
@@ -700,8 +719,8 @@ export default function InboxPage() {
             : conv
         ))
         
-        // Scroll to recent messages for silent loading
-        setTimeout(() => scrollToBottom(), 100)
+        // Scroll to recent messages immediately
+        scrollToBottom()
       }
     } catch (error: any) {
       console.error('Error loading messages silently:', error)
@@ -976,41 +995,7 @@ export default function InboxPage() {
               {filteredConversations.map((conv) => (
                 <button
                   key={conv.id}
-                  onClick={() => {
-                    // Switch conversation instantly
-                    setSelectedConversation(conv)
-                    setNewMessageText('') // Clear message input when switching conversations
-                    setError('') // Clear any previous errors
-                    
-                    // Check if messages are cached
-                    if (messageCache[conv.id]) {
-                      setMessages(messageCache[conv.id])
-                      console.log('Messages loaded from cache for:', conv.id)
-                      // Scroll to bottom when switching to cached conversation
-                      setTimeout(() => scrollToBottom(), 100)
-                    } else {
-                      // Load messages in background if not cached
-                      loadMessagesSilently(conv)
-                    }
-                    
-                    // Immediately sync for new messages when switching
-                    setTimeout(() => {
-                      if (selectedPage) {
-                        fetch(`/api/facebook/messages/sync?conversationId=${conv.id}&pageId=${selectedPage.id}`)
-                          .then(response => response.json())
-                          .then(data => {
-                            if (data.newMessages && data.newMessages.length > 0) {
-                              console.log('Immediate sync found new messages:', data.newMessages.length)
-                              // Reload messages to show new ones
-                              loadMessagesSilently(conv, true)
-                              // Scroll to bottom after immediate sync
-                              setTimeout(() => scrollToBottom(), 200)
-                            }
-                          })
-                          .catch(error => console.error('Immediate sync error:', error))
-                      }
-                    }, 500) // Small delay to ensure conversation is set
-                  }}
+                  onClick={() => selectConversation(conv)}
                   className={`w-full p-4 hover:bg-gray-50 transition-colors flex items-start gap-3 ${
                     selectedConversation?.id === conv.id ? 'bg-blue-50' : ''
                   }`}
