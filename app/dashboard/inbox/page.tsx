@@ -69,55 +69,12 @@ export default function InboxPage() {
     }
   }, [selectedPage])
 
-  // Real-time subscription for new messages
-  useEffect(() => {
-    if (!supabase || !selectedPage) return
+  // DISABLED: Real-time subscription causing confusion
+  // All automatic real-time updates are disabled to prevent conflicts
+  // Messages are only loaded when explicitly requested by user actions
 
-    console.log('Setting up real-time subscription for conversations:', conversations.map(c => c.id))
-
-    // Subscribe to new messages in real-time
-    const messagesSubscription = supabase
-      .channel('messages')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'messages'
-        },
-        (payload: any) => {
-          console.log('Real-time message received:', payload)
-          handleNewMessage(payload.new)
-          // Only scroll to bottom if user is at bottom (not reading old messages)
-          if (shouldAutoScroll) {
-            setTimeout(() => scrollToBottom(), 100)
-          }
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'messages'
-        },
-        (payload: any) => {
-          console.log('Real-time message updated:', payload)
-          handleMessageUpdate(payload.new)
-        }
-      )
-      .subscribe((status) => {
-        console.log('Real-time subscription status:', status)
-      })
-
-    return () => {
-      console.log('Cleaning up real-time subscription')
-      messagesSubscription.unsubscribe()
-    }
-  }, [supabase, selectedPage, conversations])
-
-  // Real-time message polling for active conversation
-  useEffect(() => {
+  // DISABLED: Real-time message polling causing confusion
+  // useEffect(() => {
     if (!selectedPage || !selectedConversation) return
 
     // Clear any existing interval
@@ -225,68 +182,68 @@ export default function InboxPage() {
         clearTimeout(immediateTimeout)
       }
     }
-  }, [selectedPage, selectedConversation])
+  // }, [selectedPage, selectedConversation])
 
-  // Background sync for all conversations
-  useEffect(() => {
-    if (!selectedPage || conversations.length === 0) return
+  // DISABLED: Background sync causing confusion
+  // useEffect(() => {
+  //   if (!selectedPage || conversations.length === 0) return
 
-    const interval = setInterval(async () => {
-      try {
-        console.log('Background sync: Checking all conversations for new messages...')
+  //   const interval = setInterval(async () => {
+  //     try {
+  //       console.log('Background sync: Checking all conversations for new messages...')
         
-        // Sync each conversation for new messages
-        for (const conversation of conversations) {
-          try {
-            const syncResponse = await fetch(`/api/facebook/messages/sync?conversationId=${conversation.id}&pageId=${selectedPage.id}`)
-            const syncData = await syncResponse.json()
+  //       // Sync each conversation for new messages
+  //       for (const conversation of conversations) {
+  //         try {
+  //           const syncResponse = await fetch(`/api/facebook/messages/sync?conversationId=${conversation.id}&pageId=${selectedPage.id}`)
+  //           const syncData = await syncResponse.json()
             
-            if (syncResponse.ok && syncData.newMessages && syncData.newMessages.length > 0) {
-              console.log(`Background sync: Found ${syncData.newMessages.length} new messages in conversation ${conversation.id}`)
-              
-              // Update conversation list to show new message indicator and filter placeholders
-              setConversations(prev => {
-                const updated = prev.map(conv => 
-                  conv.id === conversation.id 
-                    ? { ...conv, last_message_time: new Date().toISOString() }
-                    : conv
-                )
-                
-                // Filter out placeholder conversations
-                return updated.filter((conv: any) => {
-                  if (conv.participant_name === 'Facebook User' || 
-                      conv.participant_name === 'Unknown User' ||
-                      conv.participant_name === 'Test User') {
-                    return false
-                  }
-                  
-                  if (!conv.participant_id || !conv.facebook_conversation_id) {
-                    return false
-                  }
-                  
-                  if (conv.page_id !== selectedPage.id) {
-                    return false
-                  }
-                  
-                  return true
-                })
-              })
-            }
-          } catch (error) {
-            console.error(`Error syncing conversation ${conversation.id}:`, error)
-          }
-        }
+  //           if (syncResponse.ok && syncData.newMessages && syncData.newMessages.length > 0) {
+  //             console.log(`Background sync: Found ${syncData.newMessages.length} new messages in conversation ${conversation.id}`)
+            
+  //             // Update conversation list to show new message indicator and filter placeholders
+  //       setConversations(prev => {
+  //         const updated = prev.map(conv => 
+  //           conv.id === conversation.id 
+  //             ? { ...conv, last_message_time: new Date().toISOString() }
+  //             : conv
+  //         )
+            
+  //         // Filter out placeholder conversations
+  //         return updated.filter((conv: any) => {
+  //           if (conv.participant_name === 'Facebook User' || 
+  //               conv.participant_name === 'Unknown User' ||
+  //               conv.participant_name === 'Test User') {
+  //             return false
+  //           }
+            
+  //           if (!conv.participant_id || !conv.facebook_conversation_id) {
+  //             return false
+  //           }
+            
+  //           if (conv.page_id !== selectedPage.id) {
+  //             return false
+  //           }
+            
+  //           return true
+  //         })
+  //       })
+  //     }
+  //   } catch (error) {
+  //     console.error(`Error syncing conversation ${conversation.id}:`, error)
+  //   }
+  // }
         
-        // Update last sync time
-        ;(window as any).lastMessageUpdate = Date.now()
+  //     // Update last sync time
+  //     ;(window as any).lastMessageUpdate = Date.now()
         
-      } catch (error) {
-        console.error('Error in background sync:', error)
-      }
-    }, 5000) // Check every 5 seconds
+  //   } catch (error) {
+  //     console.error('Error in background sync:', error)
+  //   }
+  // }, 5000) // Check every 5 seconds
 
-    return () => clearInterval(interval)
-  }, [selectedPage, conversations])
+  //   return () => clearInterval(interval)
+  // }, [selectedPage, conversations])
 
   const loadPages = async () => {
     setLoadingPages(true)
@@ -1064,9 +1021,32 @@ export default function InboxPage() {
                     onClick={() => loadMessages(selectedConversation, true)}
                     disabled={loadingMessages}
                     className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                    title="Refresh all messages"
+                    title="Refresh messages manually"
                   >
                     <div className={`w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full ${loadingMessages ? 'animate-spin' : ''}`}></div>
+                  </button>
+                  
+                  <button
+                    onClick={async () => {
+                      try {
+                        const syncResponse = await fetch(`/api/facebook/messages/sync?conversationId=${selectedConversation.id}&pageId=${selectedPage.id}`)
+                        const syncData = await syncResponse.json()
+                        
+                        if (syncResponse.ok && syncData.newMessages && syncData.newMessages.length > 0) {
+                          console.log('Manual sync found new messages:', syncData.newMessages.length)
+                          // Reload messages to show new ones
+                          loadMessages(selectedConversation, true)
+                        } else {
+                          console.log('No new messages found via manual sync')
+                        }
+                      } catch (error) {
+                        console.error('Error in manual sync:', error)
+                      }
+                    }}
+                    className="p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                    title="Check for new messages from Facebook"
+                  >
+                    <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full"></div>
                   </button>
                 </div>
               </div>
