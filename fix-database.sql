@@ -1,4 +1,4 @@
--- Fix Database Schema for Facebook Messenger Tool
+-- Fix Database Schema for MyAim My Dream Tool
 -- Run this in your Supabase SQL editor to fix missing columns
 
 -- Check if pages table exists and has the right structure

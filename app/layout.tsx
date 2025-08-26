@@ -5,8 +5,8 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Facebook Messenger SaaS Tool',
-  description: 'Manage your Facebook Page conversations and send bulk messages',
+  title: 'MyAim My Dream - Facebook Messenger SaaS Tool',
+  description: 'Manage your Facebook Page conversations and send bulk messages with MyAim My Dream',
 }
 
 export default function RootLayout({

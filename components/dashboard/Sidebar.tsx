@@ -55,7 +55,7 @@ export default function Sidebar({ userId }: { userId: string }) {
       `}>
         <div className="flex flex-col h-full">
           <div className="p-4 border-b border-gray-800">
-            <h2 className="text-xl font-bold text-white">FB Messenger Tool</h2>
+            <h2 className="text-xl font-bold text-white">MyAim My Dream</h2>
           </div>
           
           <nav className="flex-1 px-2 py-4 space-y-1">

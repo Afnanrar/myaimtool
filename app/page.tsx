@@ -10,7 +10,7 @@ export default function HomePage() {
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
               <MessageSquare className="h-8 w-8 text-blue-600 mr-3" />
-              <span className="text-xl font-bold text-gray-900">FB Messenger Tool</span>
+              <span className="text-xl font-bold text-gray-900">MyAim My Dream</span>
             </div>
             <div className="flex items-center space-x-4">
               <Link
@@ -201,7 +201,7 @@ export default function HomePage() {
             <div>
               <div className="flex items-center mb-4">
                 <MessageSquare className="h-8 w-8 text-blue-400 mr-3" />
-                <span className="text-xl font-bold">FB Messenger Tool</span>
+                <span className="text-xl font-bold">MyAim My Dream</span>
               </div>
               <p className="text-gray-400">
                 Professional Facebook Messenger management tools for businesses of all sizes.
@@ -237,7 +237,7 @@ export default function HomePage() {
             </div>
           </div>
           <div className="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
-            <p>&copy; 2025 FB Messenger Tool. All rights reserved.</p>
+            <p>&copy; 2025 MyAim My Dream. All rights reserved.</p>
           </div>
         </div>
       </footer>

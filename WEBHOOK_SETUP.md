@@ -1,6 +1,6 @@
 # 🚀 Facebook Webhook Setup Guide
 
-This guide will help you set up Facebook webhooks for real-time message delivery to your Facebook Messenger Tool.
+This guide will help you set up Facebook webhooks for real-time message delivery to your MyAim My Dream tool.
 
 ## 📋 Prerequisites
 

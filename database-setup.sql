@@ -1,4 +1,4 @@
--- Facebook Messenger SaaS Tool Database Setup
+-- MyAim My Dream - Facebook Messenger SaaS Tool Database Setup
 -- Run this in your Supabase SQL editor
 
 -- Users table
