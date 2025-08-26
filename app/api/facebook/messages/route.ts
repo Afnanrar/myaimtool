@@ -73,6 +73,7 @@ export async function POST(req: NextRequest) {
         conversation_id: conversationId,
         facebook_message_id: data.message_id,
         sender_id: conversation.page.facebook_page_id,
+        page_id: conversation.page.id, // Add page_id for proper indexing
         message_text: message,
         is_from_page: true,
         created_at: new Date().toISOString(),

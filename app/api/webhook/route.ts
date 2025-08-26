@@ -105,7 +105,8 @@ async function handleMessageEvent(event: any, pageId: string) {
             message_text: event.message.text,
             is_from_page: false,
             created_at: new Date().toISOString(), // Database creation time
-            event_time: new Date(parseInt(event.timestamp)).toISOString() // Facebook event timestamp (UTC)
+            event_time: new Date(parseInt(event.timestamp)).toISOString(), // Facebook event timestamp (UTC)
+            page_id: pageId // Add page_id for proper indexing
           })
           .select()
           .single()

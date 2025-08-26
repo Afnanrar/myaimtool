@@ -28,9 +28,13 @@ ON messages (conversation_id, event_time);
 CREATE INDEX IF NOT EXISTS idx_conversations_page_last_message_time 
 ON conversations (page_id, last_message_time DESC);
 
--- Index for message pagination
+-- Index for message pagination and infinite scroll
 CREATE INDEX IF NOT EXISTS idx_messages_page_id_event_time 
 ON messages (page_id, event_time);
+
+-- Index for infinite scroll: (page_id, participant_id, event_time DESC)
+CREATE INDEX IF NOT EXISTS idx_messages_page_participant_event_time 
+ON messages (page_id, participant_id, event_time DESC);
 
 -- 6. Update conversations table to ensure last_message_time is properly typed
 ALTER TABLE conversations 

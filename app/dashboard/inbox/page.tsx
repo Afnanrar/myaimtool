@@ -28,11 +28,15 @@ export default function InboxPage() {
   const [isLoadingOlderMessages, setIsLoadingOlderMessages] = useState(false)
   const [messagePage, setMessagePage] = useState(1)
   const [totalMessages, setTotalMessages] = useState(0)
+  const [oldestLoadedTime, setOldestLoadedTime] = useState<string | null>(null)
+  const [isNearTop, setIsNearTop] = useState(false)
+  const [showNewMessageBadge, setShowNewMessageBadge] = useState(false)
   
   // Ref for messages container to enable auto-scrolling
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const messagesTopRef = useRef<HTMLDivElement>(null)
+  const scrollAnchorRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     loadPages()
@@ -350,7 +354,15 @@ export default function InboxPage() {
     if (messagesContainerRef.current) {
       const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current
       const isAtBottom = scrollTop + clientHeight >= scrollHeight - 10 // 10px threshold
+      const isNearTop = scrollTop <= 120 // 120px threshold for infinite scroll
+      
       setShouldAutoScroll(isAtBottom)
+      setIsNearTop(isNearTop)
+      
+      // Auto-load older messages when near top
+      if (isNearTop && hasMoreMessages && !isLoadingOlderMessages) {
+        loadOlderMessages()
+      }
     }
   }
 
@@ -615,6 +627,9 @@ export default function InboxPage() {
     setMessagePage(1)
     setHasMoreMessages(false)
     setTotalMessages(0)
+    setOldestLoadedTime(null)
+    setIsNearTop(false)
+    setShowNewMessageBadge(false)
     
     // Set the new conversation
     setSelectedConversation(conversation)
@@ -707,6 +722,12 @@ export default function InboxPage() {
           setTotalMessages(data.total)
         }
         
+        // Track oldest loaded message time for infinite scroll
+        if (newMessages.length > 0) {
+          const oldestMessage = newMessages[0]
+          setOldestLoadedTime(oldestMessage.event_time || oldestMessage.created_at)
+        }
+        
         // Check if there are more messages to load
         setHasMoreMessages(data.messages.length === pageSize && newMessages.length < data.total)
         
@@ -750,12 +771,57 @@ export default function InboxPage() {
     }
   }
 
-  // Function to load older messages (lazy loading)
+  // Function to load older messages (infinite scroll)
   const loadOlderMessages = async () => {
-    if (!selectedConversation || isLoadingOlderMessages || !hasMoreMessages) return
+    if (!selectedConversation || isLoadingOlderMessages || !hasMoreMessages || !oldestLoadedTime) return
     
-    console.log('Loading older messages...')
-    await loadMessages(selectedConversation, false, true)
+    console.log('Loading older messages via infinite scroll...')
+    setIsLoadingOlderMessages(true)
+    
+    try {
+      // Measure current scroll position before loading
+      const container = messagesContainerRef.current
+      const scrollAnchor = scrollAnchorRef.current
+      const anchorHeightBefore = scrollAnchor?.offsetHeight || 0
+      
+      // Load older messages from the new API endpoint
+      const response = await fetch(`/api/facebook/messages/older?conversationId=${selectedConversation.id}&oldestEventTime=${oldestLoadedTime}&pageSize=30`)
+      const data = await response.json()
+      
+      if (response.ok && data.messages && data.messages.length > 0) {
+        // Prepend older messages to existing messages
+        setMessages(prev => {
+          const updatedMessages = [...data.messages, ...prev]
+          
+          // Update oldest loaded time
+          const oldestMessage = updatedMessages[0]
+          setOldestLoadedTime(oldestMessage.event_time || oldestMessage.created_at)
+          
+          return updatedMessages
+        })
+        
+        // Update hasMore flag
+        setHasMoreMessages(data.hasMore)
+        
+        // Scroll anchoring: adjust scroll position to maintain user's view
+        setTimeout(() => {
+          if (container && scrollAnchor) {
+            const anchorHeightAfter = scrollAnchor.offsetHeight
+            const heightDelta = anchorHeightAfter - anchorHeightBefore
+            container.scrollTop += heightDelta
+          }
+        }, 50)
+        
+        console.log(`Loaded ${data.messages.length} older messages`)
+      } else {
+        console.log('No more older messages to load')
+        setHasMoreMessages(false)
+      }
+    } catch (error) {
+      console.error('Error loading older messages:', error)
+    } finally {
+      setIsLoadingOlderMessages(false)
+    }
   }
 
   // Handle real-time message updates
@@ -780,8 +846,13 @@ export default function InboxPage() {
         return updatedMessages
       })
       
-      // Auto-scroll to bottom for new incoming messages
-      setTimeout(() => scrollToBottomForNewMessage(), 100)
+      // Auto-scroll to bottom for new incoming messages only if user is near bottom
+      if (shouldAutoScroll) {
+        setTimeout(() => scrollToBottomForNewMessage(), 100)
+      } else {
+        // Show new message badge if user is not at bottom
+        setShowNewMessageBadge(true)
+      }
       
       // Update conversation list to show new message indicator
       setConversations(prev => prev.map(conv => 
@@ -1305,31 +1376,33 @@ export default function InboxPage() {
                   {/* Reference for top of messages */}
                   <div ref={messagesTopRef} />
                   
-                  {/* Load Older Messages Button */}
+                  {/* Infinite Scroll Elements */}
                   {hasMoreMessages && (
-                    <div className="text-center py-4">
-                      <button
-                        onClick={loadOlderMessages}
-                        disabled={isLoadingOlderMessages}
-                        className="px-6 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 transition-colors flex items-center mx-auto"
-                      >
-                        {isLoadingOlderMessages ? (
-                          <>
-                            <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin mr-2"></div>
-                            Loading...
-                          </>
-                        ) : (
-                          <>
-                            <Clock className="h-4 w-4 mr-2" />
-                            Load Older Messages
-                          </>
-                        )}
-                      </button>
-                      <p className="text-xs text-gray-500 mt-2">
-                        Showing {messages.length} of {totalMessages} messages
-                      </p>
+                    <div className="text-center py-2">
+                      {isLoadingOlderMessages ? (
+                        <div className="flex items-center justify-center text-gray-500">
+                          <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin mr-2"></div>
+                          <span className="text-sm">Loading older messages...</span>
+                        </div>
+                      ) : (
+                        <div className="text-xs text-gray-400">
+                          Scroll up to load more messages
+                        </div>
+                      )}
                     </div>
                   )}
+                  
+                  {/* Beginning of conversation divider */}
+                  {!hasMoreMessages && messages.length > 0 && (
+                    <div className="text-center py-4">
+                      <div className="text-xs text-gray-400 border-t border-gray-200 pt-2">
+                        Beginning of conversation
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Scroll anchor for infinite scroll */}
+                  <div ref={scrollAnchorRef} />
                   
                   {messages.map((message) => (
                     <div
@@ -1364,8 +1437,23 @@ export default function InboxPage() {
               {/* Invisible element for auto-scrolling to bottom */}
               <div ref={messagesEndRef} />
               
+              {/* New message badge - show when user is not at bottom and new messages arrive */}
+              {showNewMessageBadge && (
+                <button
+                  onClick={() => {
+                    scrollToBottomForNewMessage()
+                    setShowNewMessageBadge(false)
+                  }}
+                  className="fixed bottom-20 right-8 bg-green-500 text-white px-4 py-2 rounded-full shadow-lg hover:bg-green-600 transition-colors z-10 flex items-center"
+                  title="New message received"
+                >
+                  <span className="text-sm mr-2">New message ↓</span>
+                  <ChevronDown className="h-4 w-4" />
+                </button>
+              )}
+              
               {/* Scroll to bottom button - only show when user has scrolled up */}
-              {!shouldAutoScroll && (
+              {!shouldAutoScroll && !showNewMessageBadge && (
                 <button
                   onClick={forceScrollToBottom}
                   className="fixed bottom-20 right-8 bg-blue-500 text-white p-3 rounded-full shadow-lg hover:bg-blue-600 transition-colors z-10"
