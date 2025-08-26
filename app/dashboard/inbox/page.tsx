@@ -1192,26 +1192,54 @@ export default function InboxPage() {
               )}
             </div>
             <div className="p-4 border-t">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Type a message..."
-                  value={newMessageText}
-                  onChange={(e) => setNewMessageText(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  disabled={sendingMessage}
-                  className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-                />
-                <button 
-                  onClick={sendMessage}
-                  disabled={sendingMessage || !newMessageText.trim()}
-                  className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 transition-colors flex items-center"
-                >
-                  {sendingMessage && (
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                              <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Type a message..."
+                    value={newMessageText}
+                    onChange={(e) => setNewMessageText(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    disabled={sendingMessage}
+                    className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                  />
+                  <button 
+                    onClick={sendMessage}
+                    disabled={sendingMessage || !newMessageText.trim()}
+                    className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 transition-colors flex items-center"
+                  >
+                    {sendingMessage && (
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                    )}
+                    {sendingMessage ? 'Sending...' : 'Send'}
+                  </button>
+                  
+                  {/* Debug button - only show in development */}
+                  {process.env.NODE_ENV === 'development' && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          const response = await fetch('/api/facebook/test-send', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              conversationId: selectedConversation.id,
+                              pageId: selectedPage.id
+                            })
+                          })
+                          const data = await response.json()
+                          console.log('Facebook API Test Result:', data)
+                          alert(`Test Result: ${JSON.stringify(data, null, 2)}`)
+                        } catch (error: any) {
+                          console.error('Test failed:', error)
+                          alert('Test failed: ' + error.message)
+                        }
+                      }}
+                      className="px-3 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 text-xs"
+                      title="Test Facebook API Configuration"
+                    >
+                      Test API
+                    </button>
                   )}
-                  {sendingMessage ? 'Sending...' : 'Send'}
-                </button>
 
               </div>
             </div>

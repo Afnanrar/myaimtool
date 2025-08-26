@@ -77,14 +77,24 @@ export async function POST(req: NextRequest) {
     
     // Send message via Facebook API
     const fb = new FacebookAPI(conversation.pages.access_token)
+    console.log('Sending message via Facebook API:', {
+      recipientId: conversation.participant_id,
+      message: message,
+      pageId: conversation.pages.facebook_page_id,
+      accessToken: conversation.pages.access_token ? 'Present' : 'Missing'
+    })
+    
     const result = await fb.sendMessage(
       conversation.participant_id,
       message,
       conversation.pages.access_token
     )
     
+    console.log('Facebook API response:', result)
+    
     if (!result || !result.message_id) {
-      throw new Error('Failed to send message via Facebook API')
+      console.error('Facebook API failed:', result)
+      throw new Error(`Failed to send message via Facebook API: ${result?.error?.message || 'Unknown error'}`)
     }
     
     // Save the sent message to database
