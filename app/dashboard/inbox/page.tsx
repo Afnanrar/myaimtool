@@ -473,6 +473,8 @@ export default function InboxPage() {
     // If this conversation is currently open, update the messages display
     if (selectedConversation?.id === newMessage.conversation_id) {
       setMessages(prev => [...prev, newMessage])
+      // Scroll to bottom to show new message
+      setTimeout(() => forceScrollToBottom(), 100)
     }
     
     // Update conversation list to show new message preview
@@ -533,15 +535,18 @@ export default function InboxPage() {
             totalNewMessages += newMessages
             console.log(`Found ${newMessages} new messages in conversation ${conv.id}`)
             
-            // Update cache with new messages
+            // Update cache with new messages (reverse to show oldest first)
+            const reversedMessages = [...data.messages].reverse()
             setMessageCache(prev => ({
               ...prev,
-              [conv.id]: data.messages
+              [conv.id]: reversedMessages
             }))
             
             // If this conversation is currently open, update the display
             if (selectedConversation?.id === conv.id) {
-              setMessages(data.messages)
+              setMessages(reversedMessages)
+              // Scroll to bottom to show new messages
+              setTimeout(() => forceScrollToBottom(), 100)
             }
             
             // Update conversation list
@@ -675,11 +680,14 @@ export default function InboxPage() {
       }
       
       if (data.messages && data.messages.length > 0) {
-        setMessages(data.messages)
-        // Cache the messages with timestamp
+        // Reverse messages to show oldest first (for proper chat display)
+        const reversedMessages = [...data.messages].reverse()
+        setMessages(reversedMessages)
+        
+        // Cache the reversed messages with timestamp
         setMessageCache(prev => ({
           ...prev,
-          [conversation.id]: data.messages
+          [conversation.id]: reversedMessages
         }))
         
         // Update conversation with cache timestamp
@@ -692,7 +700,7 @@ export default function InboxPage() {
         setError('')
         
         // Force scroll to recent messages for new conversations
-        setTimeout(() => forceScrollToBottom(), 50)
+        setTimeout(() => forceScrollToBottom(), 100)
       } else {
         setMessages([])
         // Cache empty messages array
@@ -726,11 +734,14 @@ export default function InboxPage() {
       }
       
       if (data.messages && data.messages.length > 0) {
-        setMessages(data.messages)
-        // Cache the messages for instant switching
+        // Reverse messages to show oldest first (for proper chat display)
+        const reversedMessages = [...data.messages].reverse()
+        setMessages(reversedMessages)
+        
+        // Cache the reversed messages for instant switching
         setMessageCache(prev => ({
           ...prev,
-          [conversation.id]: data.messages
+          [conversation.id]: reversedMessages
         }))
         
         // Update conversation with cache timestamp
@@ -740,10 +751,8 @@ export default function InboxPage() {
             : conv
         ))
         
-        // Only scroll if user is at bottom (not reading old messages)
-        if (shouldAutoScroll) {
-          setTimeout(() => scrollToBottom(), 50)
-        }
+        // Always scroll to bottom for new conversations to show recent messages
+        setTimeout(() => forceScrollToBottom(), 100)
       }
     } catch (error: any) {
       console.error('Error loading messages silently:', error)

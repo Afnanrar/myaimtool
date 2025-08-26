@@ -121,7 +121,7 @@ export async function GET(req: NextRequest) {
         .from('messages')
         .select('*')
         .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: true })
+        .order('created_at', { ascending: false })
         .limit(100) // Limit to prevent memory issues
       
       if (cachedMessages && cachedMessages.length > 0) {
@@ -178,7 +178,7 @@ export async function GET(req: NextRequest) {
         .from('messages')
         .select('*')
         .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: true })
+        .order('created_at', { ascending: false })
       
       return NextResponse.json({ 
         messages: fallbackMessages || [],
@@ -221,7 +221,7 @@ export async function GET(req: NextRequest) {
         .from('messages')
         .select('*')
         .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: true })
+        .order('created_at', { ascending: false })
       
       if (dbMessages && dbMessages.length > 0) {
         return NextResponse.json({ 
@@ -247,7 +247,7 @@ export async function GET(req: NextRequest) {
       .from('messages')
       .select('*')
       .eq('conversation_id', conversationId)
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: false })
     
     return NextResponse.json({ 
       messages: cachedMessages || [],
