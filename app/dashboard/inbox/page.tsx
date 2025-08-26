@@ -74,9 +74,51 @@ export default function InboxPage() {
     }
   }, [selectedPage])
 
-  // DISABLED: Real-time subscription causing confusion
-  // All automatic real-time updates are disabled to prevent conflicts
-  // Messages are only loaded when explicitly requested by user actions
+  // Real-time subscriptions for live updates
+  useEffect(() => {
+    if (!supabase || !selectedPage) return
+    
+    console.log('Setting up real-time subscriptions for page:', selectedPage.id)
+    
+    // Subscribe to new messages
+    const messagesSubscription = supabase
+      .channel('messages-realtime')
+      .on('postgres_changes', 
+        { 
+          event: 'INSERT', 
+          schema: 'public', 
+          table: 'messages',
+          filter: `page_id=eq.${selectedPage.id}`
+        },
+        (payload) => {
+          console.log('New message received via real-time:', payload)
+          handleRealtimeMessage(payload.new)
+        }
+      )
+      .subscribe()
+    
+    // Subscribe to conversation updates
+    const conversationsSubscription = supabase
+      .channel('conversations-realtime')
+      .on('postgres_changes', 
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'conversations',
+          filter: `page_id=eq.${selectedPage.id}`
+        },
+        (payload) => {
+          console.log('Conversation update received via real-time:', payload)
+          handleRealtimeConversation(payload)
+        }
+      )
+      .subscribe()
+    
+    return () => {
+      messagesSubscription.unsubscribe()
+      conversationsSubscription.unsubscribe()
+    }
+  }, [selectedPage, supabase])
 
   // DISABLED: Real-time message polling causing confusion
   // useEffect(() => {
@@ -295,6 +337,11 @@ export default function InboxPage() {
 
   // Function to scroll to bottom without checking shouldAutoScroll (for forced scrolls)
   const forceScrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
+
+  // Function to scroll to bottom for new messages (always scroll)
+  const scrollToBottomForNewMessage = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
@@ -681,7 +728,7 @@ export default function InboxPage() {
         
         // Only auto-scroll for new conversations, not when loading older messages
         if (!loadOlder) {
-          setTimeout(() => forceScrollToBottom(), 25)
+          setTimeout(() => scrollToBottomForNewMessage(), 25)
         }
       } else {
         if (!loadOlder) {
@@ -709,6 +756,59 @@ export default function InboxPage() {
     
     console.log('Loading older messages...')
     await loadMessages(selectedConversation, false, true)
+  }
+
+  // Handle real-time message updates
+  const handleRealtimeMessage = (newMessage: any) => {
+    console.log('Processing real-time message:', newMessage)
+    
+    // Check if this message belongs to the currently open conversation
+    if (selectedConversation && newMessage.conversation_id === selectedConversation.id) {
+      console.log('Adding new message to current conversation')
+      
+      // Add the new message to the current messages
+      setMessages(prev => {
+        // Check if message already exists to prevent duplicates
+        const exists = prev.some(msg => msg.facebook_message_id === newMessage.facebook_message_id)
+        if (exists) return prev
+        
+        return [...prev, newMessage]
+      })
+      
+      // Auto-scroll to bottom for new incoming messages
+      setTimeout(() => scrollToBottomForNewMessage(), 100)
+      
+      // Update conversation list to show new message indicator
+      setConversations(prev => prev.map(conv => 
+        conv.id === selectedConversation.id 
+          ? { ...conv, last_message_time: newMessage.created_at, unread_count: (conv.unread_count || 0) + 1 }
+          : conv
+      ))
+    } else {
+      console.log('Message not for current conversation, updating conversation list')
+      
+      // Update conversation list for other conversations
+      setConversations(prev => prev.map(conv => 
+        conv.id === newMessage.conversation_id
+          ? { ...conv, last_message_time: newMessage.created_at, unread_count: (conv.unread_count || 0) + 1 }
+          : conv
+      ))
+    }
+  }
+
+  // Handle real-time conversation updates
+  const handleRealtimeConversation = (payload: any) => {
+    console.log('Processing real-time conversation update:', payload)
+    
+    if (payload.eventType === 'INSERT') {
+      // New conversation created
+      setConversations(prev => [...prev, payload.new])
+    } else if (payload.eventType === 'UPDATE') {
+      // Existing conversation updated
+      setConversations(prev => prev.map(conv => 
+        conv.id === payload.new.id ? payload.new : conv
+      ))
+    }
   }
 
   // Removed loadMessagesSilently to prevent multiple message loading sources
@@ -739,7 +839,7 @@ export default function InboxPage() {
       setNewMessageText('')
       
       // Always scroll to bottom when sending a message
-      setTimeout(() => forceScrollToBottom(), 100)
+      setTimeout(() => scrollToBottomForNewMessage(), 100)
     
     try {
       const response = await fetch('/api/facebook/messages', {
@@ -769,38 +869,46 @@ export default function InboxPage() {
       // Message sent successfully - replace optimistic message with real one
       if (data.success && data.message_id) {
         console.log('Replacing optimistic message with real message ID:', data.message_id)
-        const updatedMessages = messages.map(msg => 
-          msg.id === optimisticMessage.id 
-            ? { ...msg, id: data.message_id, facebook_message_id: data.message_id }
-            : msg
-        )
         
-        console.log('Updated messages:', updatedMessages)
-        setMessages(updatedMessages)
-        
-        // Update the cache with the new messages
-        setMessageCache(prev => ({
-          ...prev,
-          [selectedConversation.id]: updatedMessages
-        }))
+        setMessages(prev => {
+          const updatedMessages = prev.map(msg => 
+            msg.id === optimisticMessage.id 
+              ? { ...msg, id: data.message_id, facebook_message_id: data.message_id }
+              : msg
+          )
+          
+          console.log('Updated messages:', updatedMessages)
+          
+          // Update the cache with the new messages
+          setMessageCache(prevCache => ({
+            ...prevCache,
+            [selectedConversation.id]: updatedMessages
+          }))
+          
+          return updatedMessages
+        })
       } else {
         // If we don't get a proper response, just keep the optimistic message
         // but mark it as sent
         console.log('No proper response, marking optimistic message as sent')
-        const updatedMessages = messages.map(msg => 
-          msg.id === optimisticMessage.id 
-            ? { ...msg, id: `sent-${Date.now()}`, facebook_message_id: `sent-${Date.now()}` }
-            : msg
-        )
         
-        console.log('Updated messages (fallback):', updatedMessages)
-        setMessages(updatedMessages)
-        
-        // Update the cache
-        setMessageCache(prev => ({
-          ...prev,
-          [selectedConversation.id]: updatedMessages
-        }))
+        setMessages(prev => {
+          const updatedMessages = prev.map(msg => 
+            msg.id === optimisticMessage.id 
+              ? { ...msg, id: `sent-${Date.now()}`, facebook_message_id: `sent-${Date.now()}` }
+              : msg
+          )
+          
+          console.log('Updated messages (fallback):', updatedMessages)
+          
+          // Update the cache
+          setMessageCache(prevCache => ({
+            ...prevCache,
+            [selectedConversation.id]: updatedMessages
+          }))
+          
+          return updatedMessages
+        })
       }
 
       // Also update the conversation list to show the new message
