@@ -75,7 +75,8 @@ export async function POST(req: NextRequest) {
         sender_id: conversation.page.facebook_page_id,
         message_text: message,
         is_from_page: true,
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
+        event_time: new Date().toISOString() // Use current time for sent messages
       })
     
     // Update conversation last message time
@@ -132,7 +133,7 @@ export async function GET(req: NextRequest) {
         .from('messages')
         .select('*')
         .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: false })
+        .order('event_time', { ascending: true }) // Sort by Facebook event timestamp (oldest first)
         .range(offset, offset + pageSize - 1)
       
       if (cachedMessages && cachedMessages.length > 0) {
@@ -193,7 +194,7 @@ export async function GET(req: NextRequest) {
         .from('messages')
         .select('*')
         .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: false })
+        .order('event_time', { ascending: true }) // Sort by Facebook event timestamp (oldest first)
         .range(offset, offset + pageSize - 1)
       
       return NextResponse.json({ 
@@ -241,7 +242,7 @@ export async function GET(req: NextRequest) {
         .from('messages')
         .select('*')
         .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: false })
+        .order('event_time', { ascending: true }) // Sort by Facebook event timestamp (oldest first)
         .range(offset, offset + pageSize - 1)
       
       if (dbMessages && dbMessages.length > 0) {
@@ -275,7 +276,7 @@ export async function GET(req: NextRequest) {
       .from('messages')
       .select('*')
       .eq('conversation_id', conversationId)
-      .order('created_at', { ascending: false })
+      .order('event_time', { ascending: true }) // Sort by Facebook event timestamp (oldest first)
       .range(0, pageSize - 1)
     
     return NextResponse.json({ 

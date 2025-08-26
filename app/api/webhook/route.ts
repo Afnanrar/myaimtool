@@ -94,31 +94,32 @@ async function handleMessageEvent(event: any, pageId: string) {
       await triggerRealtimeUpdate('conversations', 'UPDATE', { ...conversation, unread_count: (conversation.unread_count || 0) + 1 })
     }
     
-    // Save message to database
-    if (event.message && event.message.text) {
-      const { data: savedMessage, error: msgError } = await supabaseAdmin!
-        .from('messages')
-        .insert({
-          conversation_id: conversation?.id || (await getConversationId(event.sender.id, pageId)),
-          facebook_message_id: event.message.mid,
-          sender_id: event.sender.id,
-          message_text: event.message.text,
-          is_from_page: false,
-          created_at: new Date(parseInt(event.timestamp)).toISOString()
-        })
-        .select()
-        .single()
-      
-      if (msgError) {
-        console.error('Error saving message:', msgError)
-        return
+          // Save message to database
+      if (event.message && event.message.text) {
+        const { data: savedMessage, error: msgError } = await supabaseAdmin!
+          .from('messages')
+          .insert({
+            conversation_id: conversation?.id || (await getConversationId(event.sender.id, pageId)),
+            facebook_message_id: event.message.mid,
+            sender_id: event.sender.id,
+            message_text: event.message.text,
+            is_from_page: false,
+            created_at: new Date().toISOString(), // Database creation time
+            event_time: new Date(parseInt(event.timestamp)).toISOString() // Facebook event timestamp (UTC)
+          })
+          .select()
+          .single()
+        
+        if (msgError) {
+          console.error('Error saving message:', msgError)
+          return
+        }
+        
+        // Trigger real-time update for new message
+        await triggerRealtimeUpdate('messages', 'INSERT', savedMessage)
+        
+        console.log('Message saved and real-time update triggered:', savedMessage)
       }
-      
-      // Trigger real-time update for new message
-      await triggerRealtimeUpdate('messages', 'INSERT', savedMessage)
-      
-      console.log('Message saved and real-time update triggered:', savedMessage)
-    }
     
   } catch (error) {
     console.error('Error handling message event:', error)

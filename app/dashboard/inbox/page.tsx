@@ -693,11 +693,11 @@ export default function InboxPage() {
         let newMessages: any[] = []
         
         if (loadOlder) {
-          // Loading older messages - prepend to existing messages
+          // Loading older messages - prepend to existing messages (oldest first)
           newMessages = [...data.messages, ...messages]
           setMessagePage(currentPage)
         } else {
-          // New conversation - show latest messages
+          // New conversation - messages are already in correct order (oldest first, newest last)
           newMessages = data.messages
           setMessagePage(1)
         }
@@ -772,7 +772,12 @@ export default function InboxPage() {
         const exists = prev.some(msg => msg.facebook_message_id === newMessage.facebook_message_id)
         if (exists) return prev
         
-        return [...prev, newMessage]
+        // Add new message and sort by event_time to maintain correct order
+        const updatedMessages = [...prev, newMessage].sort((a, b) => 
+          new Date(a.event_time || a.created_at).getTime() - new Date(b.event_time || b.created_at).getTime()
+        )
+        
+        return updatedMessages
       })
       
       // Auto-scroll to bottom for new incoming messages
@@ -781,7 +786,7 @@ export default function InboxPage() {
       // Update conversation list to show new message indicator
       setConversations(prev => prev.map(conv => 
         conv.id === selectedConversation.id 
-          ? { ...conv, last_message_time: newMessage.created_at, unread_count: (conv.unread_count || 0) + 1 }
+          ? { ...conv, last_message_time: newMessage.event_time || newMessage.created_at, unread_count: (conv.unread_count || 0) + 1 }
           : conv
       ))
     } else {
@@ -790,7 +795,7 @@ export default function InboxPage() {
       // Update conversation list for other conversations
       setConversations(prev => prev.map(conv => 
         conv.id === newMessage.conversation_id
-          ? { ...conv, last_message_time: newMessage.created_at, unread_count: (conv.unread_count || 0) + 1 }
+          ? { ...conv, last_message_time: newMessage.event_time || newMessage.created_at, unread_count: (conv.unread_count || 0) + 1 }
           : conv
       ))
     }
@@ -821,7 +826,8 @@ export default function InboxPage() {
     setSendingMessage(true)
     setError('')
     
-    // Create optimistic message immediately
+    // Create optimistic message immediately with proper timestamp
+    const now = new Date().toISOString()
     const optimisticMessage = {
       id: `temp-${Date.now()}`,
       conversation_id: selectedConversation.id,
@@ -829,7 +835,8 @@ export default function InboxPage() {
       sender_id: selectedPage.facebook_page_id || selectedPage.id,
       message_text: messageText,
       is_from_page: true,
-      created_at: new Date().toISOString()
+      created_at: now,
+      event_time: now // Use same timestamp for proper sorting
     }
     
           // Add message to UI immediately
@@ -916,7 +923,7 @@ export default function InboxPage() {
         if (conv.id === selectedConversation.id) {
           return {
             ...conv,
-            last_message_time: new Date().toISOString(),
+            last_message_time: now, // Use the same timestamp as the message
             updated_at: new Date().toISOString()
           }
         }
