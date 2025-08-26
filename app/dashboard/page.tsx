@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
 import { Users, MessageSquare, Send, TrendingUp, RefreshCw } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
@@ -23,64 +22,8 @@ export default function DashboardPage() {
     loadUserAndStats()
     checkWebhookStatus()
     
-    // Set up real-time subscriptions
-    if (supabase) {
-      // Subscribe to pages changes
-      const pagesSubscription = supabase
-        .channel('dashboard-pages')
-        .on('postgres_changes', 
-          { event: '*', schema: 'public', table: 'pages' },
-          () => {
-            console.log('Pages changed, updating stats...')
-            loadStats()
-          }
-        )
-        .subscribe()
-
-      // Subscribe to conversations changes
-      const conversationsSubscription = supabase
-        .channel('dashboard-conversations')
-        .on('postgres_changes', 
-          { event: '*', schema: 'public', table: 'conversations' },
-          () => {
-            console.log('Conversations changed, updating stats...')
-            loadStats()
-          }
-        )
-        .subscribe()
-
-      // Subscribe to messages changes
-      const messagesSubscription = supabase
-        .channel('dashboard-messages')
-        .on('postgres_changes', 
-          { event: '*', schema: 'public', table: 'messages' },
-          () => {
-            console.log('Messages changed, updating stats...')
-            loadStats()
-          }
-        )
-        .subscribe()
-
-      // Subscribe to broadcasts changes
-      const broadcastsSubscription = supabase
-        .channel('dashboard-broadcasts')
-        .on('postgres_changes', 
-          { event: '*', schema: 'public', table: 'broadcasts' },
-          () => {
-            console.log('Broadcasts changed, updating stats...')
-            loadStats()
-          }
-        )
-        .subscribe()
-
-      // Cleanup subscriptions
-      return () => {
-        pagesSubscription.unsubscribe()
-        conversationsSubscription.unsubscribe()
-        messagesSubscription.unsubscribe()
-        broadcastsSubscription.unsubscribe()
-      }
-    }
+    // Note: Real-time subscriptions removed to prevent conflicts
+    // Stats are updated via manual refresh and periodic polling
   }, [])
 
   // Periodic refresh as backup (every 30 seconds)
@@ -118,37 +61,29 @@ export default function DashboardPage() {
   }
 
   const loadStats = async () => {
-    if (!supabase) return
-    
     try {
       setRefreshing(true)
       
-      // Get current stats from database
-      const { data: pages } = await supabase.from('pages').select('id', { count: 'exact' })
-      const { data: conversations } = await supabase.from('conversations').select('id', { count: 'exact' })
-      const { data: broadcasts } = await supabase.from('broadcasts').select('id', { count: 'exact' })
-      
-      // Get recent messages (last 24 hours)
-      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-      const { data: recentMessages, count: recentMessagesCount } = await supabase
-        .from('messages')
-        .select('id', { count: 'exact' })
-        .gte('created_at', twentyFourHoursAgo)
-      
-      const newStats = {
-        totalPages: pages?.length || 0,
-        totalConversations: conversations?.length || 0,
-        totalBroadcasts: broadcasts?.length || 0,
-        recentMessages: recentMessagesCount || 0
+      // Get stats from the dedicated API endpoint
+      const response = await fetch('/api/dashboard/stats')
+      if (!response.ok) {
+        console.error('Stats API failed:', response.status, response.statusText)
+        // Keep existing stats if API fails
+        return
       }
       
-      setStats(newStats)
-      setLastUpdated(new Date())
+      const data = await response.json()
       
-      console.log('Stats updated:', newStats)
-    } catch (dbError) {
-      console.error('Database error:', dbError)
-      // Keep existing stats if database fails
+      if (data.stats) {
+        setStats(data.stats)
+        setLastUpdated(new Date())
+        console.log('Stats updated:', data.stats)
+      } else {
+        console.error('Invalid stats response:', data)
+      }
+    } catch (error) {
+      console.error('Failed to load stats:', error)
+      // Keep existing stats if request fails
     } finally {
       setRefreshing(false)
     }
