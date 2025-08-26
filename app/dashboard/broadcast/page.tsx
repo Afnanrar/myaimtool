@@ -66,7 +66,7 @@ export default function BroadcastPage() {
   const [tagDropdownOpen, setTagDropdownOpen] = useState(false)
   const [broadcastResult, setBroadcastResult] = useState<BroadcastResult | null>(null)
   const [error, setError] = useState('')
-  const [preview, setPreview] = useState('')
+
   const [loadingPages, setLoadingPages] = useState(true)
   const [audienceStats, setAudienceStats] = useState({
     totalLeads: 0,
@@ -88,13 +88,7 @@ export default function BroadcastPage() {
     }
   }, [selectedPage])
 
-  useEffect(() => {
-    if (message && useSpintax) {
-      generatePreview()
-    } else {
-      setPreview(message)
-    }
-  }, [message, useSpintax])
+
 
   const loadPages = async () => {
     setLoadingPages(true)
@@ -135,15 +129,7 @@ export default function BroadcastPage() {
     }
   }
 
-  const generatePreview = () => {
-    if (!message) return
-    
-    const processed = message.replace(/\{([^}]+)\}/g, (match, group) => {
-      const options = group.split('|')
-      return options[Math.floor(Math.random() * options.length)]
-    })
-    setPreview(processed)
-  }
+
 
   const validateBroadcast = () => {
     const errors = []
@@ -224,7 +210,6 @@ export default function BroadcastPage() {
           }
         })
         setMessage('')
-        setPreview('')
         setMessageTag('')
       } else {
         console.error('Broadcast failed:', data)
@@ -471,25 +456,7 @@ export default function BroadcastPage() {
               )}
             </div>
 
-            {/* Preview */}
-            {message && (
-              <div className="mb-6">
-                <div className="flex justify-between items-center mb-2">
-                  <label className="text-sm font-medium text-gray-700">Message Preview</label>
-                  {useSpintax && (
-                    <button
-                      onClick={generatePreview}
-                      className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-                    >
-                      Generate New Preview
-                    </button>
-                  )}
-                </div>
-                <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                  <p className="whitespace-pre-wrap text-gray-800">{preview || message}</p>
-                </div>
-              </div>
-            )}
+
 
             {/* Error Message */}
             {error && !showPreflightSummary && (
@@ -567,7 +534,6 @@ export default function BroadcastPage() {
               <button
                 onClick={() => {
                   setMessage('')
-                  setPreview('')
                   setMessageTag('')
                   setBroadcastResult(null)
                   setError('')
