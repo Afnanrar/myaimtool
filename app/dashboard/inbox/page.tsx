@@ -707,6 +707,8 @@ export default function InboxPage() {
       
       const data = await response.json()
       
+      console.log('Message send response:', data)
+      
       if (!response.ok) {
         setError(data.error || 'Failed to send message')
         // Remove optimistic message on error
@@ -717,19 +719,41 @@ export default function InboxPage() {
       }
       
       // Message sent successfully - replace optimistic message with real one
-      const updatedMessages = messages.map(msg => 
-        msg.id === optimisticMessage.id 
-          ? { ...msg, id: data.message.id, facebook_message_id: data.facebookMessageId }
-          : msg
-      )
-      
-      setMessages(updatedMessages)
-      
-      // Update the cache with the new messages
-      setMessageCache(prev => ({
-        ...prev,
-        [selectedConversation.id]: updatedMessages
-      }))
+      if (data.success && data.message_id) {
+        console.log('Replacing optimistic message with real message ID:', data.message_id)
+        const updatedMessages = messages.map(msg => 
+          msg.id === optimisticMessage.id 
+            ? { ...msg, id: data.message_id, facebook_message_id: data.message_id }
+            : msg
+        )
+        
+        console.log('Updated messages:', updatedMessages)
+        setMessages(updatedMessages)
+        
+        // Update the cache with the new messages
+        setMessageCache(prev => ({
+          ...prev,
+          [selectedConversation.id]: updatedMessages
+        }))
+      } else {
+        // If we don't get a proper response, just keep the optimistic message
+        // but mark it as sent
+        console.log('No proper response, marking optimistic message as sent')
+        const updatedMessages = messages.map(msg => 
+          msg.id === optimisticMessage.id 
+            ? { ...msg, id: `sent-${Date.now()}`, facebook_message_id: `sent-${Date.now()}` }
+            : msg
+        )
+        
+        console.log('Updated messages (fallback):', updatedMessages)
+        setMessages(updatedMessages)
+        
+        // Update the cache
+        setMessageCache(prev => ({
+          ...prev,
+          [selectedConversation.id]: updatedMessages
+        }))
+      }
 
       // Also update the conversation list to show the new message
       setConversations(prev => prev.map(conv => {
