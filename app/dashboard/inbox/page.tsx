@@ -712,7 +712,7 @@ export default function InboxPage() {
           newMessages = [...data.messages, ...messages]
           setMessagePage(currentPage)
         } else {
-          // New conversation - messages are already in correct order (oldest first, newest last)
+          // New conversation - messages are already in correct order from API (oldest first, newest last)
           newMessages = data.messages
           setMessagePage(1)
         }
@@ -788,17 +788,18 @@ export default function InboxPage() {
       const response = await fetch(`/api/facebook/messages/older?conversationId=${selectedConversation.id}&oldestEventTime=${oldestLoadedTime}&pageSize=30`)
       const data = await response.json()
       
-      if (response.ok && data.messages && data.messages.length > 0) {
-        // Prepend older messages to existing messages
-        setMessages(prev => {
-          const updatedMessages = [...data.messages, ...prev]
-          
-          // Update oldest loaded time
-          const oldestMessage = updatedMessages[0]
-          setOldestLoadedTime(oldestMessage.event_time || oldestMessage.created_at)
-          
-          return updatedMessages
-        })
+             if (response.ok && data.messages && data.messages.length > 0) {
+         // Prepend older messages to existing messages
+         // The API returns messages in event_time ASC order, so we prepend them directly
+         setMessages(prev => {
+           const updatedMessages = [...data.messages, ...prev]
+           
+           // Update oldest loaded time
+           const oldestMessage = updatedMessages[0]
+           setOldestLoadedTime(oldestMessage.event_time || oldestMessage.created_at)
+           
+           return updatedMessages
+         })
         
         // Update hasMore flag
         setHasMoreMessages(data.hasMore)
@@ -838,12 +839,9 @@ export default function InboxPage() {
         const exists = prev.some(msg => msg.facebook_message_id === newMessage.facebook_message_id)
         if (exists) return prev
         
-        // Add new message and sort by event_time to maintain correct order
-        const updatedMessages = [...prev, newMessage].sort((a, b) => 
-          new Date(a.event_time || a.created_at).getTime() - new Date(b.event_time || b.created_at).getTime()
-        )
-        
-        return updatedMessages
+        // Add new message to the end (it should be the newest)
+        // No need to re-sort as messages are already in correct order
+        return [...prev, newMessage]
       })
       
       // Auto-scroll to bottom for new incoming messages only if user is near bottom

@@ -134,7 +134,7 @@ export async function GET(req: NextRequest) {
         .from('messages')
         .select('*')
         .eq('conversation_id', conversationId)
-        .order('event_time', { ascending: true }) // Sort by Facebook event timestamp (oldest first)
+        .order('event_time', { ascending: true }) // Sort by Facebook event timestamp (oldest first, newest last)
         .range(offset, offset + pageSize - 1)
       
       if (cachedMessages && cachedMessages.length > 0) {
@@ -221,9 +221,11 @@ export async function GET(req: NextRequest) {
             conversation_id: conversationId,
             facebook_message_id: msg.id,
             sender_id: msg.from.id,
+            page_id: conversation.page_id, // Add page_id for proper indexing
             message_text: msg.message || '[Media or attachment]',
             is_from_page: msg.from.id === page.facebook_page_id,
-            created_at: msg.created_time
+            created_at: msg.created_time,
+            event_time: msg.created_time // Use Facebook timestamp for proper ordering
           }, {
             onConflict: 'facebook_message_id'
           })
