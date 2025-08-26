@@ -66,19 +66,34 @@ export async function POST(req: NextRequest) {
       }, { status: 400 })
     }
     
-    // Save message to database
-    await supabaseAdmin!
+    // Save message to database with proper structure
+    const messageData = {
+      id: data.message_id, // Use Facebook message ID as primary key
+      conversation_id: conversationId,
+      facebook_message_id: data.message_id,
+      sender_id: conversation.page.facebook_page_id,
+      page_id: conversation.page.id,
+      message_text: message,
+      is_from_page: true,
+      direction: 'outgoing',
+      created_at: new Date().toISOString(),
+      event_time: new Date().toISOString()
+    }
+    
+    const { data: savedMessage, error: saveError } = await supabaseAdmin!
       .from('messages')
-      .insert({
-        conversation_id: conversationId,
-        facebook_message_id: data.message_id,
-        sender_id: conversation.page.facebook_page_id,
-        page_id: conversation.page.id, // Add page_id for proper indexing
-        message_text: message,
-        is_from_page: true,
-        created_at: new Date().toISOString(),
-        event_time: new Date().toISOString() // Use current time for sent messages
+      .upsert(messageData, {
+        onConflict: 'id' // Upsert by Facebook message ID
       })
+      .select()
+      .single()
+    
+    if (saveError) {
+      console.error('Error saving message to database:', saveError)
+      throw new Error('Failed to save message to database')
+    }
+    
+    console.log('Message saved to database:', savedMessage)
     
     // Update conversation last message time
     await supabaseAdmin!
@@ -91,7 +106,8 @@ export async function POST(req: NextRequest) {
     
     return NextResponse.json({ 
       success: true,
-      message_id: data.message_id 
+      message_id: data.message_id,
+      message: savedMessage // Return the complete saved message
     })
     
   } catch (error: any) {
@@ -215,19 +231,23 @@ export async function GET(req: NextRequest) {
     if (data.data && data.data.length > 0) {
       // Use Promise.all for parallel processing
       const savePromises = data.data.map(async (msg: any) => {
+        const messageData = {
+          id: msg.id, // Use Facebook message ID as primary key
+          conversation_id: conversationId,
+          facebook_message_id: msg.id,
+          sender_id: msg.from.id,
+          page_id: conversation.page_id,
+          message_text: msg.message || '[Media or attachment]',
+          is_from_page: msg.from.id === page.facebook_page_id,
+          direction: msg.from.id === page.facebook_page_id ? 'outgoing' : 'incoming',
+          created_at: msg.created_time,
+          event_time: msg.created_time // Use Facebook timestamp for proper ordering
+        }
+        
         const { data: savedMsg } = await supabaseAdmin!
           .from('messages')
-          .upsert({
-            conversation_id: conversationId,
-            facebook_message_id: msg.id,
-            sender_id: msg.from.id,
-            page_id: conversation.page_id, // Add page_id for proper indexing
-            message_text: msg.message || '[Media or attachment]',
-            is_from_page: msg.from.id === page.facebook_page_id,
-            created_at: msg.created_time,
-            event_time: msg.created_time // Use Facebook timestamp for proper ordering
-          }, {
-            onConflict: 'facebook_message_id'
+          .upsert(messageData, {
+            onConflict: 'id' // Upsert by Facebook message ID
           })
           .select()
           .single()

@@ -732,8 +732,11 @@ export default function InboxPage() {
           
           // Sort by created_time (oldest first, newest last)
           newMessages = uniqueMessages.sort((a: any, b: any) => {
-            const timeA = new Date(a.created_at || a.event_time || 0).getTime()
-            const timeB = new Date(b.created_at || b.event_time || 0).getTime()
+            // Convert timestamps to milliseconds if they're in seconds
+            const timeA = typeof a.created_at === 'string' ? new Date(a.created_at).getTime() : 
+                         typeof a.created_at === 'number' ? (a.created_at < 1000000000000 ? a.created_at * 1000 : a.created_at) : 0
+            const timeB = typeof b.created_at === 'string' ? new Date(b.created_at).getTime() : 
+                         typeof b.created_at === 'number' ? (b.created_at < 1000000000000 ? b.created_at * 1000 : b.created_at) : 0
             return timeA - timeB
           })
           
@@ -746,8 +749,11 @@ export default function InboxPage() {
           )
           
           newMessages = uniqueMessages.sort((a: any, b: any) => {
-            const timeA = new Date(a.created_at || a.event_time || 0).getTime()
-            const timeB = new Date(b.created_at || b.event_time || 0).getTime()
+            // Convert timestamps to milliseconds if they're in seconds
+            const timeA = typeof a.created_at === 'string' ? new Date(a.created_at).getTime() : 
+                         typeof a.created_at === 'number' ? (a.created_at < 1000000000000 ? a.created_at * 1000 : a.created_at) : 0
+            const timeB = typeof b.created_at === 'string' ? new Date(b.created_at).getTime() : 
+                         typeof b.created_at === 'number' ? (b.created_at < 1000000000000 ? b.created_at * 1000 : b.created_at) : 0
             return timeA - timeB
           })
           
@@ -846,8 +852,11 @@ export default function InboxPage() {
            
            // Sort by created_time (oldest first, newest last)
            const sortedMessages = uniqueMessages.sort((a: any, b: any) => {
-             const timeA = new Date(a.created_at || a.event_time || 0).getTime()
-             const timeB = new Date(b.created_at || b.event_time || 0).getTime()
+             // Convert timestamps to milliseconds if they're in seconds
+             const timeA = typeof a.created_at === 'string' ? new Date(a.created_at).getTime() : 
+                          typeof a.created_at === 'number' ? (a.created_at < 1000000000000 ? a.created_at * 1000 : a.created_at) : 0
+             const timeB = typeof b.created_at === 'string' ? new Date(b.created_at).getTime() : 
+                          typeof b.created_at === 'number' ? (b.created_at < 1000000000000 ? b.created_at * 1000 : b.created_at) : 0
              return timeA - timeB
            })
            
@@ -901,8 +910,11 @@ export default function InboxPage() {
         
         // Sort by created_time (oldest first, newest last)
         return updatedMessages.sort((a: any, b: any) => {
-          const timeA = new Date(a.created_at || a.event_time || 0).getTime()
-          const timeB = new Date(b.created_at || b.event_time || 0).getTime()
+          // Convert timestamps to milliseconds if they're in seconds
+          const timeA = typeof a.created_at === 'string' ? new Date(a.created_at).getTime() : 
+                       typeof a.created_at === 'number' ? (a.created_at < 1000000000000 ? a.created_at * 1000 : a.created_at) : 0
+          const timeB = typeof b.created_at === 'string' ? new Date(b.created_at).getTime() : 
+                       typeof b.created_at === 'number' ? (b.created_at < 1000000000000 ? b.created_at * 1000 : b.created_at) : 0
           return timeA - timeB
         })
       })
@@ -980,6 +992,30 @@ export default function InboxPage() {
     }
   }
 
+  // Polling mechanism for real-time updates (fallback)
+  useEffect(() => {
+    if (!selectedConversation || !selectedPage) return
+    
+    const pollInterval = setInterval(async () => {
+      try {
+        // Check for new messages every 3 seconds
+        const response = await fetch(`/api/facebook/messages?conversationId=${selectedConversation.id}&pageSize=1`)
+        const data = await response.json()
+        
+        if (response.ok && data.total && data.total > messages.length) {
+          console.log('Polling detected new messages, refreshing...')
+          const requestId = Date.now().toString()
+          ;(window as any).currentRequestId = requestId
+          loadMessages(selectedConversation, true, false, requestId)
+        }
+      } catch (error) {
+        console.log('Polling error:', error)
+      }
+    }, 3000) // Poll every 3 seconds
+    
+    return () => clearInterval(pollInterval)
+  }, [selectedConversation, selectedPage, messages.length])
+  
   // Removed loadMessagesSilently to prevent multiple message loading sources
   // All message loading now goes through the single loadMessages function
 
@@ -1009,8 +1045,11 @@ export default function InboxPage() {
         
         // Sort by created_time (oldest first, newest last)
         return updatedMessages.sort((a: any, b: any) => {
-          const timeA = new Date(a.created_at || a.event_time || 0).getTime()
-          const timeB = new Date(b.created_at || b.event_time || 0).getTime()
+          // Convert timestamps to milliseconds if they're in seconds
+          const timeA = typeof a.created_at === 'string' ? new Date(a.created_at).getTime() : 
+                       typeof a.created_at === 'number' ? (a.created_at < 1000000000000 ? a.created_at * 1000 : a.created_at) : 0
+          const timeB = typeof b.created_at === 'string' ? new Date(b.created_at).getTime() : 
+                       typeof b.created_at === 'number' ? (b.created_at < 1000000000000 ? b.created_at * 1000 : b.created_at) : 0
           return timeA - timeB
         })
       })
@@ -1047,13 +1086,13 @@ export default function InboxPage() {
       }
       
       // Message sent successfully - replace optimistic message with real one
-      if (data.success && data.message_id) {
-        console.log('Replacing optimistic message with real message ID:', data.message_id)
+      if (data.success && data.message_id && data.message) {
+        console.log('Replacing optimistic message with real message:', data.message)
         
         setMessages(prev => {
           const updatedMessages = prev.map((msg: any) => 
             msg.id === optimisticMessage.id 
-              ? { ...msg, id: data.message_id, facebook_message_id: data.message_id }
+              ? { ...msg, ...data.message, id: data.message_id } // Use complete saved message data
               : msg
           )
           
@@ -1066,6 +1105,13 @@ export default function InboxPage() {
           }))
           
           return updatedMessages
+        })
+        
+        // Invalidate cache to ensure fresh data on reload
+        setMessageCache(prevCache => {
+          const newCache = { ...prevCache }
+          delete newCache[selectedConversation.id] // Remove cached messages for this conversation
+          return newCache
         })
       } else {
         // If we don't get a proper response, just keep the optimistic message
@@ -1081,14 +1127,21 @@ export default function InboxPage() {
           
           console.log('Updated messages (fallback):', updatedMessages)
           
-          // Update the cache
-          setMessageCache(prevCache => ({
-            ...prevCache,
-            [selectedConversation.id]: updatedMessages
-          }))
-          
-          return updatedMessages
+                  // Update the cache
+        setMessageCache(prevCache => ({
+          ...prevCache,
+          [selectedConversation.id]: updatedMessages
+        }))
+        
+        // Invalidate cache to ensure fresh data on reload
+        setMessageCache(prevCache => {
+          const newCache = { ...prevCache }
+          delete newCache[selectedConversation.id]
+          return newCache
         })
+        
+        return updatedMessages
+      })
       }
 
       // Also update the conversation list to show the new message and maintain sorting
