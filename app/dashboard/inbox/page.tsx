@@ -860,7 +860,7 @@ export default function InboxPage() {
               {lastRefreshed && (
                 <span className="flex items-center">
                   <Clock className="h-3 w-3 mr-1" />
-                  {lastRefreshed.toLocaleTimeString()}
+                  {lastRefreshed?.toLocaleTimeString() || 'Unknown time'}
                 </span>
               )}
             </div>
