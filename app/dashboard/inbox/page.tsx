@@ -24,10 +24,15 @@ export default function InboxPage() {
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null)
   const [realtimeInterval, setRealtimeInterval] = useState<NodeJS.Timeout | null>(null)
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
+  const [hasMoreMessages, setHasMoreMessages] = useState(false)
+  const [isLoadingOlderMessages, setIsLoadingOlderMessages] = useState(false)
+  const [messagePage, setMessagePage] = useState(1)
+  const [totalMessages, setTotalMessages] = useState(0)
   
   // Ref for messages container to enable auto-scrolling
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
+  const messagesTopRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     loadPages()
@@ -559,6 +564,11 @@ export default function InboxPage() {
     setNewMessageText('')
     setShouldAutoScroll(true)
     
+    // Reset pagination state for new conversation
+    setMessagePage(1)
+    setHasMoreMessages(false)
+    setTotalMessages(0)
+    
     // Set the new conversation
     setSelectedConversation(conversation)
     
@@ -579,7 +589,7 @@ export default function InboxPage() {
     }
   }
 
-  const loadMessages = async (conversation: any, forceRefresh = false) => {
+  const loadMessages = async (conversation: any, forceRefresh = false, loadOlder = false) => {
     if (!conversation || !selectedPage) return
     
     // Prevent multiple simultaneous loading operations
@@ -589,15 +599,19 @@ export default function InboxPage() {
     }
     
     ;(window as any).isLoadingMessages = true
-    setLoadingMessages(true)
+    
+    if (loadOlder) {
+      setIsLoadingOlderMessages(true)
+    } else {
+      setLoadingMessages(true)
+      setMessagePage(1) // Reset to first page for new conversation
+    }
+    
     setError('')
     
     try {
-      // Skip cache to prevent blinking - always load fresh for correct order
-      // This ensures messages are displayed in the right order from the start
-      
       // If force refresh, sync new messages from Facebook first
-      if (forceRefresh) {
+      if (forceRefresh && !loadOlder) {
         try {
           const syncResponse = await fetch(`/api/facebook/messages/sync?conversationId=${conversation.id}&pageId=${selectedPage.id}`)
           const syncData = await syncResponse.json()
@@ -610,25 +624,49 @@ export default function InboxPage() {
         }
       }
       
-      // Load messages from API
-      const url = `/api/facebook/messages?conversationId=${conversation.id}${forceRefresh ? '&refresh=true' : ''}`
+      // Load messages from API with pagination
+      const currentPage = loadOlder ? messagePage + 1 : 1
+      const pageSize = 30 // Load 30 messages per page
+      const url = `/api/facebook/messages?conversationId=${conversation.id}&page=${currentPage}&pageSize=${pageSize}${forceRefresh ? '&refresh=true' : ''}`
+      
       const response = await fetch(url)
       const data = await response.json()
       
       if (!response.ok) {
         setError(data.error || 'Failed to load messages')
-        setMessages([])
+        if (!loadOlder) {
+          setMessages([])
+        }
         return
       }
       
       if (data.messages && data.messages.length > 0) {
-        // Reverse messages to show oldest first (for proper chat display)
-        const reversedMessages = [...data.messages].reverse()
+        // For new conversations, show latest messages first
+        // For loading older messages, prepend them to existing messages
+        let newMessages: any[] = []
         
-        // Cache the reversed messages with timestamp first
+        if (loadOlder) {
+          // Loading older messages - prepend to existing messages
+          newMessages = [...data.messages, ...messages]
+          setMessagePage(currentPage)
+        } else {
+          // New conversation - show latest messages
+          newMessages = data.messages
+          setMessagePage(1)
+        }
+        
+        // Update total message count
+        if (data.total) {
+          setTotalMessages(data.total)
+        }
+        
+        // Check if there are more messages to load
+        setHasMoreMessages(data.messages.length === pageSize && newMessages.length < data.total)
+        
+        // Cache the messages
         setMessageCache(prev => ({
           ...prev,
-          [conversation.id]: reversedMessages
+          [conversation.id]: newMessages
         }))
         
         // Update conversation with cache timestamp
@@ -639,28 +677,38 @@ export default function InboxPage() {
         ))
         
         setError('')
+        setMessages(newMessages)
         
-        // Set messages immediately for instant display
-        setMessages(reversedMessages)
-        // Force scroll to recent messages for new conversations
-        setTimeout(() => forceScrollToBottom(), 25)
+        // Only auto-scroll for new conversations, not when loading older messages
+        if (!loadOlder) {
+          setTimeout(() => forceScrollToBottom(), 25)
+        }
       } else {
-        setMessages([])
-        // Cache empty messages array
-        setMessageCache(prev => ({
-          ...prev,
-          [conversation.id]: []
-        }))
+        if (!loadOlder) {
+          setMessages([])
+          setHasMoreMessages(false)
+        }
         setError('No messages found in this conversation.')
       }
     } catch (error: any) {
       console.error('Error loading messages:', error)
       setError('Failed to load messages: ' + (error.message || 'Unknown error'))
-      setMessages([])
+      if (!loadOlder) {
+        setMessages([])
+      }
     } finally {
       setLoadingMessages(false)
+      setIsLoadingOlderMessages(false)
       ;(window as any).isLoadingMessages = false
     }
+  }
+
+  // Function to load older messages (lazy loading)
+  const loadOlderMessages = async () => {
+    if (!selectedConversation || isLoadingOlderMessages || !hasMoreMessages) return
+    
+    console.log('Loading older messages...')
+    await loadMessages(selectedConversation, false, true)
   }
 
   // Removed loadMessagesSilently to prevent multiple message loading sources
@@ -1139,6 +1187,35 @@ export default function InboxPage() {
                 </div>
               ) : (
                 <div className="space-y-4">
+                  {/* Reference for top of messages */}
+                  <div ref={messagesTopRef} />
+                  
+                  {/* Load Older Messages Button */}
+                  {hasMoreMessages && (
+                    <div className="text-center py-4">
+                      <button
+                        onClick={loadOlderMessages}
+                        disabled={isLoadingOlderMessages}
+                        className="px-6 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 transition-colors flex items-center mx-auto"
+                      >
+                        {isLoadingOlderMessages ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin mr-2"></div>
+                            Loading...
+                          </>
+                        ) : (
+                          <>
+                            <Clock className="h-4 w-4 mr-2" />
+                            Load Older Messages
+                          </>
+                        )}
+                      </button>
+                      <p className="text-xs text-gray-500 mt-2">
+                        Showing {messages.length} of {totalMessages} messages
+                      </p>
+                    </div>
+                  )}
+                  
                   {messages.map((message) => (
                     <div
                       key={message.id}

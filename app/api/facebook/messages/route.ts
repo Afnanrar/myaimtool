@@ -105,6 +105,8 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const conversationId = searchParams.get('conversationId')
   const forceRefresh = searchParams.get('refresh') === 'true'
+  const pageNum = parseInt(searchParams.get('page') || '1')
+  const pageSize = parseInt(searchParams.get('pageSize') || '30')
   
   if (!conversationId) {
     return NextResponse.json({ error: 'Conversation ID is required' }, { status: 400 })
@@ -115,19 +117,32 @@ export async function GET(req: NextRequest) {
   }
   
   try {
-    // First, try to load from database cache (instant)
+    // Get total message count for pagination
+    const { count: totalMessages } = await supabaseAdmin
+      .from('messages')
+      .select('*', { count: 'exact', head: true })
+      .eq('conversation_id', conversationId)
+    
+    // Calculate offset for pagination
+    const offset = (pageNum - 1) * pageSize
+    
+    // First, try to load from database cache with pagination
     if (!forceRefresh) {
       const { data: cachedMessages } = await supabaseAdmin
         .from('messages')
         .select('*')
         .eq('conversation_id', conversationId)
         .order('created_at', { ascending: false })
-        .limit(100) // Limit to prevent memory issues
+        .range(offset, offset + pageSize - 1)
       
       if (cachedMessages && cachedMessages.length > 0) {
-        // Return cached data immediately
+        // Return cached data immediately with pagination info
         return NextResponse.json({ 
           messages: cachedMessages,
+          total: totalMessages || 0,
+          page: pageNum,
+          pageSize: pageSize,
+          hasMore: offset + pageSize < (totalMessages || 0),
           source: 'cache',
           message: 'Showing cached messages. Add ?refresh=true for latest.'
         })
@@ -179,9 +194,14 @@ export async function GET(req: NextRequest) {
         .select('*')
         .eq('conversation_id', conversationId)
         .order('created_at', { ascending: false })
+        .range(offset, offset + pageSize - 1)
       
       return NextResponse.json({ 
         messages: fallbackMessages || [],
+        total: totalMessages || 0,
+        page: pageNum,
+        pageSize: pageSize,
+        hasMore: offset + pageSize < (totalMessages || 0),
         error: `Facebook API: ${data.error.message}`,
         source: 'cache_fallback'
       })
@@ -222,10 +242,15 @@ export async function GET(req: NextRequest) {
         .select('*')
         .eq('conversation_id', conversationId)
         .order('created_at', { ascending: false })
+        .range(offset, offset + pageSize - 1)
       
       if (dbMessages && dbMessages.length > 0) {
         return NextResponse.json({ 
           messages: dbMessages,
+          total: totalMessages || 0,
+          page: pageNum,
+          pageSize: pageSize,
+          hasMore: offset + pageSize < (totalMessages || 0),
           source: 'database',
           message: 'Showing cached messages'
         })
@@ -234,7 +259,10 @@ export async function GET(req: NextRequest) {
     
     return NextResponse.json({ 
       messages,
-      totalFound: messages.length,
+      total: totalMessages || 0,
+      page: pageNum,
+      pageSize: pageSize,
+      hasMore: offset + pageSize < (totalMessages || 0),
       conversationId: conversation.id,
       source: 'facebook'
     })
@@ -248,9 +276,14 @@ export async function GET(req: NextRequest) {
       .select('*')
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: false })
+      .range(0, pageSize - 1)
     
     return NextResponse.json({ 
       messages: cachedMessages || [],
+      total: 0,
+      page: 1,
+      pageSize: pageSize,
+      hasMore: false,
       error: 'Failed to fetch new messages',
       source: 'cache_on_error'
     })
