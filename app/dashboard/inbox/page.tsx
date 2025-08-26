@@ -23,9 +23,11 @@ export default function InboxPage() {
   const [loadingPages, setLoadingPages] = useState(true)
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null)
   const [realtimeInterval, setRealtimeInterval] = useState<NodeJS.Timeout | null>(null)
+  const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
   
   // Ref for messages container to enable auto-scrolling
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     loadPages()
@@ -86,8 +88,10 @@ export default function InboxPage() {
         (payload: any) => {
           console.log('Real-time message received:', payload)
           handleNewMessage(payload.new)
-          // Scroll to bottom when new message arrives via real-time
-          setTimeout(() => scrollToBottom(), 100)
+          // Only scroll to bottom if user is at bottom (not reading old messages)
+          if (shouldAutoScroll) {
+            setTimeout(() => scrollToBottom(), 100)
+          }
         }
       )
       .on(
@@ -322,7 +326,23 @@ export default function InboxPage() {
 
   // Function to scroll to bottom of messages
   const scrollToBottom = () => {
+    if (shouldAutoScroll) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }
+
+  // Function to scroll to bottom without checking shouldAutoScroll (for forced scrolls)
+  const forceScrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
+
+  // Handle scroll events to detect user scrolling
+  const handleScroll = () => {
+    if (messagesContainerRef.current) {
+      const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current
+      const isAtBottom = scrollTop + clientHeight >= scrollHeight - 10 // 10px threshold
+      setShouldAutoScroll(isAtBottom)
+    }
   }
 
   const loadConversations = useCallback(async (forceRefresh = false) => {
@@ -591,12 +611,13 @@ export default function InboxPage() {
     setSelectedConversation(conversation)
     setNewMessageText('') // Clear message input when switching conversations
     setError('') // Clear any previous errors
+    setShouldAutoScroll(true) // Reset auto-scroll when switching conversations
     
     // Show cached messages instantly if available
     if (messageCache[conversation.id]) {
       setMessages(messageCache[conversation.id])
-      // Scroll to recent messages immediately for professional experience
-      scrollToBottom()
+      // Force scroll to recent messages when switching conversations
+      setTimeout(() => forceScrollToBottom(), 50)
       
       // Load fresh data in background
       loadMessagesSilently(conversation, true)
@@ -670,8 +691,8 @@ export default function InboxPage() {
         
         setError('')
         
-        // Scroll to recent messages immediately for professional experience
-        scrollToBottom()
+        // Force scroll to recent messages for new conversations
+        setTimeout(() => forceScrollToBottom(), 50)
       } else {
         setMessages([])
         // Cache empty messages array
@@ -719,8 +740,10 @@ export default function InboxPage() {
             : conv
         ))
         
-        // Scroll to recent messages immediately
-        scrollToBottom()
+        // Only scroll if user is at bottom (not reading old messages)
+        if (shouldAutoScroll) {
+          setTimeout(() => scrollToBottom(), 50)
+        }
       }
     } catch (error: any) {
       console.error('Error loading messages silently:', error)
@@ -751,8 +774,8 @@ export default function InboxPage() {
       // Clear input immediately
       setNewMessageText('')
       
-      // Scroll to bottom after adding new message
-      setTimeout(() => scrollToBottom(), 100)
+      // Always scroll to bottom when sending a message
+      setTimeout(() => forceScrollToBottom(), 100)
     
     try {
       const response = await fetch('/api/facebook/messages/realtime', {
@@ -1095,7 +1118,11 @@ export default function InboxPage() {
                 </div>
               )}
             </div>
-            <div className="flex-1 p-4 overflow-y-auto">
+            <div 
+              ref={messagesContainerRef}
+              className="flex-1 p-4 overflow-y-auto"
+              onScroll={handleScroll}
+            >
               {loadingMessages ? (
                 <div className="flex items-center justify-center h-full">
                   <div className="text-center">
@@ -1152,6 +1179,17 @@ export default function InboxPage() {
               
               {/* Invisible element for auto-scrolling to bottom */}
               <div ref={messagesEndRef} />
+              
+              {/* Scroll to bottom button - only show when user has scrolled up */}
+              {!shouldAutoScroll && (
+                <button
+                  onClick={forceScrollToBottom}
+                  className="fixed bottom-20 right-8 bg-blue-500 text-white p-3 rounded-full shadow-lg hover:bg-blue-600 transition-colors z-10"
+                  title="Scroll to recent messages"
+                >
+                  <ChevronDown className="h-5 w-5" />
+                </button>
+              )}
             </div>
             <div className="p-4 border-t">
               <div className="flex gap-2">
