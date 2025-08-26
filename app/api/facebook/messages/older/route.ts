@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
       .eq('conversation_id', conversationId)
       .lt('event_time', oldestEventTime)
     
-    const hasMore = totalOlder > pageSize
+    const hasMore = (totalOlder || 0) > pageSize
     
     return NextResponse.json({
       messages: olderMessages || [],
