@@ -414,7 +414,14 @@ export default function InboxPage() {
         
         console.log(`Filtered conversations: ${data.conversations.length} -> ${realConversations.length} real conversations`)
         
-        setConversations(realConversations)
+        // Sort conversations by last_message_time (newest first)
+        const sortedConversations = realConversations.sort((a: any, b: any) => {
+          const timeA = new Date(a.last_message_time || a.updated_at || 0).getTime()
+          const timeB = new Date(b.last_message_time || b.updated_at || 0).getTime()
+          return timeB - timeA // DESC order (newest first)
+        })
+        
+        setConversations(sortedConversations)
         setError('')
         
         if (forceRefresh) {
@@ -453,7 +460,7 @@ export default function InboxPage() {
     conversationsToPreload.forEach(async (conv) => {
       if (!messageCache[conv.id]) {
         try {
-          const response = await fetch(`/api/facebook/messages?conversationId=${conv.id}`)
+          const response = await fetch(`/api/facebook/messages?conversationId=${conv.id}&pageSize=10`)
           const data = await response.json()
           
           if (response.ok && data.messages) {
@@ -599,7 +606,9 @@ export default function InboxPage() {
         
         // Reload messages to show synced content
         if (selectedConversation?.id === conversationId) {
-          loadMessages(selectedConversation)
+          const requestId = Date.now().toString()
+          ;(window as any).currentRequestId = requestId
+          loadMessages(selectedConversation, false, false, requestId)
         }
         
         // Reload conversations to update last message times
@@ -617,6 +626,9 @@ export default function InboxPage() {
   }
 
   const selectConversation = (conversation: any) => {
+    // Generate unique request ID to prevent race conditions
+    const requestId = Date.now().toString()
+    
     // Immediately clear previous conversation data to prevent confusion
     setMessages([])
     setError('')
@@ -631,36 +643,37 @@ export default function InboxPage() {
     setIsNearTop(false)
     setShowNewMessageBadge(false)
     
-    // Set the new conversation
+    // Set the new conversation with unique ID
     setSelectedConversation(conversation)
+    
+    // Store the current request ID to prevent old responses from overwriting
+    ;(window as any).currentRequestId = requestId
     
     // Show loading state immediately
     setLoadingMessages(true)
     
-    // Load messages for the new conversation (single source of truth)
-    loadMessages(conversation)
+    // Load messages for the new conversation using unique ID
+    loadMessages(conversation, false, false, requestId)
     
-    // Cancel any ongoing background operations for previous conversation
-    if ((window as any).currentConversationId !== conversation.id) {
-      (window as any).currentConversationId = conversation.id
-      // Clear any pending timeouts
-      if ((window as any).messageUpdateTimeout) {
-        clearTimeout((window as any).messageUpdateTimeout)
-        ;(window as any).messageUpdateTimeout = null
-      }
-    }
+    console.log(`Selected conversation: ${conversation.id} (${conversation.participant_name}) with request ID: ${requestId}`)
   }
 
-  const loadMessages = async (conversation: any, forceRefresh = false, loadOlder = false) => {
+  const loadMessages = async (conversation: any, forceRefresh = false, loadOlder = false, requestId?: string) => {
     if (!conversation || !selectedPage) return
     
-    // Prevent multiple simultaneous loading operations
-    if ((window as any).isLoadingMessages) {
-      console.log('Message loading already in progress, skipping...')
+    // Check if this request is still valid (prevent race conditions)
+    if (requestId && (window as any).currentRequestId !== requestId) {
+      console.log('Request outdated, ignoring response for conversation:', conversation.id)
       return
     }
     
-    ;(window as any).isLoadingMessages = true
+    // Prevent multiple simultaneous loading operations for the same conversation
+    if ((window as any).isLoadingMessages === conversation.id) {
+      console.log('Message loading already in progress for this conversation, skipping...')
+      return
+    }
+    
+    ;(window as any).isLoadingMessages = conversation.id
     
     if (loadOlder) {
       setIsLoadingOlderMessages(true)
@@ -705,17 +718,39 @@ export default function InboxPage() {
       if (data.messages && data.messages.length > 0) {
         console.log(`API returned ${data.messages.length} messages, total: ${data.total}, page: ${currentPage}, pageSize: ${pageSize}`)
         
-        // For new conversations, show latest messages first
-        // For loading older messages, prepend them to existing messages
+        // Process messages: remove duplicates and ensure proper ordering
         let newMessages: any[] = []
         
         if (loadOlder) {
-          // Loading older messages - prepend to existing messages (oldest first)
-          newMessages = [...data.messages, ...messages]
+          // Loading older messages - merge with existing messages
+          const allMessages = [...data.messages, ...messages]
+          
+          // Remove duplicates by message ID
+          const uniqueMessages = allMessages.filter((msg: any, index: number, arr: any[]) => 
+            arr.findIndex((m: any) => m.id === msg.id) === index
+          )
+          
+          // Sort by created_time (oldest first, newest last)
+          newMessages = uniqueMessages.sort((a: any, b: any) => {
+            const timeA = new Date(a.created_at || a.event_time || 0).getTime()
+            const timeB = new Date(b.created_at || b.event_time || 0).getTime()
+            return timeA - timeB
+          })
+          
           setMessagePage(currentPage)
         } else {
-          // New conversation - messages are already in correct order from API (oldest first, newest last)
-          newMessages = data.messages
+          // New conversation - ensure messages are in correct order
+          // Remove duplicates and sort by created_time
+          const uniqueMessages = data.messages.filter((msg: any, index: number, arr: any[]) => 
+            arr.findIndex((m: any) => m.id === msg.id) === index
+          )
+          
+          newMessages = uniqueMessages.sort((a: any, b: any) => {
+            const timeA = new Date(a.created_at || a.event_time || 0).getTime()
+            const timeB = new Date(b.created_at || b.event_time || 0).getTime()
+            return timeA - timeB
+          })
+          
           setMessagePage(1)
         }
         
@@ -800,16 +835,27 @@ export default function InboxPage() {
       const data = await response.json()
       
              if (response.ok && data.messages && data.messages.length > 0) {
-         // Prepend older messages to existing messages
-         // The API returns messages in event_time ASC order, so we prepend them directly
+         // Merge older messages with existing messages
          setMessages(prev => {
-           const updatedMessages = [...data.messages, ...prev]
+           const allMessages = [...data.messages, ...prev]
+           
+           // Remove duplicates by message ID
+           const uniqueMessages = allMessages.filter((msg: any, index: number, arr: any[]) => 
+             arr.findIndex((m: any) => m.id === msg.id) === index
+           )
+           
+           // Sort by created_time (oldest first, newest last)
+           const sortedMessages = uniqueMessages.sort((a: any, b: any) => {
+             const timeA = new Date(a.created_at || a.event_time || 0).getTime()
+             const timeB = new Date(b.created_at || b.event_time || 0).getTime()
+             return timeA - timeB
+           })
            
            // Update oldest loaded time
-           const oldestMessage = updatedMessages[0]
+           const oldestMessage = sortedMessages[0]
            setOldestLoadedTime(oldestMessage.event_time || oldestMessage.created_at)
            
-           return updatedMessages
+           return sortedMessages
          })
         
         // Update hasMore flag
@@ -847,12 +893,18 @@ export default function InboxPage() {
       // Add the new message to the current messages
       setMessages(prev => {
         // Check if message already exists to prevent duplicates
-        const exists = prev.some(msg => msg.facebook_message_id === newMessage.facebook_message_id)
+        const exists = prev.some((msg: any) => msg.facebook_message_id === newMessage.facebook_message_id)
         if (exists) return prev
         
-        // Add new message to the end (it should be the newest)
-        // No need to re-sort as messages are already in correct order
-        return [...prev, newMessage]
+        // Add new message and re-sort to maintain chronological order
+        const updatedMessages = [...prev, newMessage]
+        
+        // Sort by created_time (oldest first, newest last)
+        return updatedMessages.sort((a: any, b: any) => {
+          const timeA = new Date(a.created_at || a.event_time || 0).getTime()
+          const timeB = new Date(b.created_at || b.event_time || 0).getTime()
+          return timeA - timeB
+        })
       })
       
       // Auto-scroll to bottom for new incoming messages only if user is near bottom
@@ -863,21 +915,39 @@ export default function InboxPage() {
         setShowNewMessageBadge(true)
       }
       
-      // Update conversation list to show new message indicator
-      setConversations(prev => prev.map(conv => 
-        conv.id === selectedConversation.id 
-          ? { ...conv, last_message_time: newMessage.event_time || newMessage.created_at, unread_count: (conv.unread_count || 0) + 1 }
-          : conv
-      ))
+      // Update conversation list to show new message indicator and maintain sorting
+      setConversations(prev => {
+        const updatedConversations = prev.map(conv => 
+          conv.id === selectedConversation.id 
+            ? { ...conv, last_message_time: newMessage.event_time || newMessage.created_at, unread_count: (conv.unread_count || 0) + 1 }
+            : conv
+        )
+        
+        // Re-sort conversations by last_message_time (newest first)
+        return updatedConversations.sort((a: any, b: any) => {
+          const timeA = new Date(a.last_message_time || a.updated_at || 0).getTime()
+          const timeB = new Date(b.last_message_time || b.updated_at || 0).getTime()
+          return timeB - timeA // DESC order (newest first)
+        })
+      })
     } else {
       console.log('Message not for current conversation, updating conversation list')
       
-      // Update conversation list for other conversations
-      setConversations(prev => prev.map(conv => 
-        conv.id === newMessage.conversation_id
-          ? { ...conv, last_message_time: newMessage.event_time || newMessage.created_at, unread_count: (conv.unread_count || 0) + 1 }
-          : conv
-      ))
+      // Update conversation list for other conversations and maintain sorting
+      setConversations(prev => {
+        const updatedConversations = prev.map(conv => 
+          conv.id === newMessage.conversation_id
+            ? { ...conv, last_message_time: newMessage.event_time || newMessage.created_at, unread_count: (conv.unread_count || 0) + 1 }
+            : conv
+        )
+        
+        // Re-sort conversations by last_message_time (newest first)
+        return updatedConversations.sort((a: any, b: any) => {
+          const timeA = new Date(a.last_message_time || a.updated_at || 0).getTime()
+          const timeB = new Date(b.last_message_time || b.updated_at || 0).getTime()
+          return timeB - timeA // DESC order (newest first)
+        })
+      })
     }
   }
 
@@ -886,13 +956,27 @@ export default function InboxPage() {
     console.log('Processing real-time conversation update:', payload)
     
     if (payload.eventType === 'INSERT') {
-      // New conversation created
-      setConversations(prev => [...prev, payload.new])
+      // New conversation created - add and re-sort
+      setConversations(prev => {
+        const updatedConversations = [...prev, payload.new]
+        return updatedConversations.sort((a: any, b: any) => {
+          const timeA = new Date(a.last_message_time || a.updated_at || 0).getTime()
+          const timeB = new Date(b.last_message_time || b.updated_at || 0).getTime()
+          return timeB - timeA // DESC order (newest first)
+        })
+      })
     } else if (payload.eventType === 'UPDATE') {
-      // Existing conversation updated
-      setConversations(prev => prev.map(conv => 
-        conv.id === payload.new.id ? payload.new : conv
-      ))
+      // Existing conversation updated - update and re-sort
+      setConversations(prev => {
+        const updatedConversations = prev.map(conv => 
+          conv.id === payload.new.id ? payload.new : conv
+        )
+        return updatedConversations.sort((a: any, b: any) => {
+          const timeA = new Date(a.last_message_time || a.updated_at || 0).getTime()
+          const timeB = new Date(b.last_message_time || b.updated_at || 0).getTime()
+          return timeB - timeA // DESC order (newest first)
+        })
+      })
     }
   }
 
@@ -919,8 +1003,17 @@ export default function InboxPage() {
       event_time: now // Use same timestamp for proper sorting
     }
     
-          // Add message to UI immediately
-      setMessages(prev => [...prev, optimisticMessage])
+          // Add message to UI immediately and maintain chronological order
+      setMessages(prev => {
+        const updatedMessages = [...prev, optimisticMessage]
+        
+        // Sort by created_time (oldest first, newest last)
+        return updatedMessages.sort((a: any, b: any) => {
+          const timeA = new Date(a.created_at || a.event_time || 0).getTime()
+          const timeB = new Date(b.created_at || b.event_time || 0).getTime()
+          return timeA - timeB
+        })
+      })
       
       // Clear input immediately
       setNewMessageText('')
@@ -947,7 +1040,7 @@ export default function InboxPage() {
       if (!response.ok) {
         setError(data.error || 'Failed to send message')
         // Remove optimistic message on error
-        setMessages(prev => prev.filter(msg => msg.id !== optimisticMessage.id))
+        setMessages(prev => prev.filter((msg: any) => msg.id !== optimisticMessage.id))
         // Restore the message text
         setNewMessageText(messageText)
         return
@@ -958,7 +1051,7 @@ export default function InboxPage() {
         console.log('Replacing optimistic message with real message ID:', data.message_id)
         
         setMessages(prev => {
-          const updatedMessages = prev.map(msg => 
+          const updatedMessages = prev.map((msg: any) => 
             msg.id === optimisticMessage.id 
               ? { ...msg, id: data.message_id, facebook_message_id: data.message_id }
               : msg
@@ -980,7 +1073,7 @@ export default function InboxPage() {
         console.log('No proper response, marking optimistic message as sent')
         
         setMessages(prev => {
-          const updatedMessages = prev.map(msg => 
+          const updatedMessages = prev.map((msg: any) => 
             msg.id === optimisticMessage.id 
               ? { ...msg, id: `sent-${Date.now()}`, facebook_message_id: `sent-${Date.now()}` }
               : msg
@@ -998,17 +1091,26 @@ export default function InboxPage() {
         })
       }
 
-      // Also update the conversation list to show the new message
-      setConversations(prev => prev.map(conv => {
-        if (conv.id === selectedConversation.id) {
-          return {
-            ...conv,
-            last_message_time: now, // Use the same timestamp as the message
-            updated_at: new Date().toISOString()
+      // Also update the conversation list to show the new message and maintain sorting
+      setConversations(prev => {
+        const updatedConversations = prev.map(conv => {
+          if (conv.id === selectedConversation.id) {
+            return {
+              ...conv,
+              last_message_time: now, // Use the same timestamp as the message
+              updated_at: new Date().toISOString()
+            }
           }
-        }
-        return conv
-      }))
+          return conv
+        })
+        
+        // Re-sort conversations by last_message_time (newest first)
+        return updatedConversations.sort((a: any, b: any) => {
+          const timeA = new Date(a.last_message_time || a.updated_at || 0).getTime()
+          const timeB = new Date(b.last_message_time || b.updated_at || 0).getTime()
+          return timeB - timeA // DESC order (newest first)
+        })
+      })
       
       // Show success message briefly
       setError('')
@@ -1271,7 +1373,9 @@ export default function InboxPage() {
                         if (syncResponse.ok && syncData.newMessages && syncData.newMessages.length > 0) {
                           console.log('Synced new incoming messages:', syncData.newMessages.length)
                           // Reload messages to show new ones
-                          loadMessages(selectedConversation, true)
+                          const requestId = Date.now().toString()
+                          ;(window as any).currentRequestId = requestId
+                          loadMessages(selectedConversation, true, false, requestId)
                         } else {
                           console.log('No new incoming messages found')
                         }
@@ -1285,7 +1389,11 @@ export default function InboxPage() {
                     <div className="w-4 h-4 border-2 border-green-400 border-t-transparent rounded-full"></div>
                   </button>
                   <button
-                    onClick={() => loadMessages(selectedConversation, true)}
+                    onClick={() => {
+                      const requestId = Date.now().toString()
+                      ;(window as any).currentRequestId = requestId
+                      loadMessages(selectedConversation, true, false, requestId)
+                    }}
                     disabled={loadingMessages}
                     className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
                     title="Refresh messages manually"
@@ -1302,7 +1410,9 @@ export default function InboxPage() {
                         if (syncResponse.ok && syncData.newMessages && syncData.newMessages.length > 0) {
                           console.log('Manual sync found new messages:', syncData.newMessages.length)
                           // Reload messages to show new ones
-                          loadMessages(selectedConversation, true)
+                          const requestId = Date.now().toString()
+                          ;(window as any).currentRequestId = requestId
+                          loadMessages(selectedConversation, true, false, requestId)
                         } else {
                           console.log('No new messages found via manual sync')
                         }
@@ -1360,7 +1470,9 @@ export default function InboxPage() {
                       onClick={() => {
                         setError('')
                         if (selectedConversation) {
-                          loadMessages(selectedConversation)
+                          const requestId = Date.now().toString()
+                          ;(window as any).currentRequestId = requestId
+                          loadMessages(selectedConversation, false, false, requestId)
                         }
                       }}
                       className="px-3 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600 transition-colors"
@@ -1387,7 +1499,11 @@ export default function InboxPage() {
                 <div className="text-center text-gray-500">
                   <p className="text-red-500">{error}</p>
                   <button
-                    onClick={() => loadMessages(selectedConversation)}
+                    onClick={() => {
+                      const requestId = Date.now().toString()
+                      ;(window as any).currentRequestId = requestId
+                      loadMessages(selectedConversation, false, false, requestId)
+                    }}
                     className="mt-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
                   >
                     Retry
