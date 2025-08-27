@@ -66,9 +66,9 @@ export default function InboxPage() {
   const startMessagePolling = () => {
     pollIntervalRef.current = setInterval(() => {
       if (selectedConversation) {
-        loadMessages(true) // Silent refresh
+        loadMessages(true) // Silent refresh with Facebook sync
       }
-    }, 2000) // Poll every 2 seconds
+    }, 3000) // Poll every 3 seconds for better performance
   }
 
   const stopMessagePolling = () => {
@@ -119,6 +119,21 @@ export default function InboxPage() {
     if (!silent) setLoading(true)
     
     try {
+      // First, sync new messages from Facebook
+      if (silent) {
+        try {
+          const syncResponse = await fetch(`/api/facebook/messages/sync?conversationId=${selectedConversation.id}&pageId=${selectedPage.id}`)
+          const syncData = await syncResponse.json()
+          
+          if (syncResponse.ok && syncData.newMessages && syncData.newMessages.length > 0) {
+            console.log('Synced new messages from Facebook:', syncData.newMessages.length)
+          }
+        } catch (syncError) {
+          console.error('Error syncing messages:', syncError)
+        }
+      }
+      
+      // Then fetch updated messages from database
       const response = await fetch(`/api/facebook/messages/${selectedConversation.id}`)
       const data = await response.json()
       
@@ -348,18 +363,42 @@ export default function InboxPage() {
                 </div>
                 <div>
                   <h3 className="font-semibold text-gray-900">{selectedConversation.participant_name}</h3>
-                  <p className="text-sm text-gray-500">Facebook Messenger • Fast Sync (2s)</p>
+                  <p className="text-sm text-gray-500">Facebook Messenger • Auto-sync every 3s</p>
                 </div>
               </div>
-              <button
-                onClick={() => {
-                  setIsFirstLoad(false)
-                  loadMessages()
-                }}
-                className="text-blue-500 text-sm hover:underline"
-              >
-                Check New Messages
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    try {
+                      const syncResponse = await fetch(`/api/facebook/messages/sync?conversationId=${selectedConversation.id}&pageId=${selectedPage.id}`)
+                      const syncData = await syncResponse.json()
+                      
+                      if (syncResponse.ok && syncData.newMessages && syncData.newMessages.length > 0) {
+                        console.log('Manual sync found new messages:', syncData.newMessages.length)
+                        // Reload messages to show new ones
+                        loadMessages(true)
+                      } else {
+                        console.log('No new messages found via manual sync')
+                      }
+                    } catch (error) {
+                      console.error('Error in manual sync:', error)
+                    }
+                  }}
+                  className="px-3 py-1 bg-green-500 text-white text-xs rounded hover:bg-green-600 transition-colors"
+                  title="Sync new messages from Facebook"
+                >
+                  Sync Facebook
+                </button>
+                <button
+                  onClick={() => {
+                    setIsFirstLoad(false)
+                    loadMessages()
+                  }}
+                  className="text-blue-500 text-sm hover:underline"
+                >
+                  Check New Messages
+                </button>
+              </div>
             </div>
 
             {/* Messages */}
