@@ -31,6 +31,7 @@ export default function InboxPage() {
   const [oldestLoadedTime, setOldestLoadedTime] = useState<string | null>(null)
   const [isNearTop, setIsNearTop] = useState(false)
   const [showNewMessageBadge, setShowNewMessageBadge] = useState(false)
+  const [pendingMessages, setPendingMessages] = useState(new Set())
   
   // Ref for messages container to enable auto-scrolling
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -1086,41 +1087,30 @@ export default function InboxPage() {
     setSendingMessage(true)
     setError('')
     
-    // Create optimistic message immediately with proper timestamp
-    const now = new Date().toISOString()
-    const optimisticMessage = {
-      id: `temp-${Date.now()}`,
-      conversation_id: selectedConversation.id,
-      facebook_message_id: `temp-${Date.now()}`,
-      sender_id: selectedPage.facebook_page_id || selectedPage.id,
-      message_text: messageText,
-      is_from_page: true,
-      created_at: now,
-      event_time: now // Use same timestamp for proper sorting
-    }
+    const tempId = Date.now().toString()
     
-          // Add message to UI immediately and maintain chronological order
-      setMessages(prev => {
-        const updatedMessages = [...prev, optimisticMessage]
-        
-        // Sort by created_time (oldest first, newest last)
-        return updatedMessages.sort((a: any, b: any) => {
-          // Convert timestamps to milliseconds if they're in seconds
-          const timeA = typeof a.created_at === 'string' ? new Date(a.created_at).getTime() : 
-                       typeof a.created_at === 'number' ? (a.created_at < 1000000000000 ? a.created_at * 1000 : a.created_at) : 0
-          const timeB = typeof b.created_at === 'string' ? new Date(b.created_at).getTime() : 
-                       typeof b.created_at === 'number' ? (b.created_at < 1000000000000 ? b.created_at * 1000 : b.created_at) : 0
-          return timeA - timeB
-        })
-      })
+    try {
+      // Add to pending messages
+      setPendingMessages(prev => new Set(prev).add(tempId))
+      
+      // Add message to UI immediately with pending status
+      const newMsg = {
+        id: tempId,
+        conversation_id: selectedConversation.id,
+        message_text: messageText,
+        is_from_page: true,
+        created_at: new Date().toISOString(),
+        sender_id: 'page',
+        status: 'pending'
+      }
+      setMessages(prev => [...prev, newMsg])
       
       // Clear input immediately
       setNewMessageText('')
       
       // Always scroll to bottom when sending a message
       setTimeout(() => scrollToBottomForNewMessage(), 100)
-    
-    try {
+      
       const response = await fetch('/api/facebook/messages', {
         method: 'POST',
         headers: {
@@ -1134,150 +1124,46 @@ export default function InboxPage() {
       
       const data = await response.json()
       
-      console.log('Message send response:', { 
-        status: response.status, 
-        ok: response.ok, 
-        data: data 
-      })
-      
-      // Check for both HTTP errors and API-level errors
-      if (!response.ok || !data.success) {
-        const errorMessage = data.error || data.details || 'Failed to send message'
-        console.error('Message send failed:', { response: response.ok, data })
-        setError(errorMessage)
+      if (response.ok) {
+        setNewMessageText('')
         
-        // Remove optimistic message on error
-        setMessages(prev => prev.filter((msg: any) => msg.id !== optimisticMessage.id))
-        // Restore the message text
-        setNewMessageText(messageText)
-        return
-      }
-      
-      // Message sent successfully - mark optimistic message as sent, wait for echo webhook
-      if (data.success && data.message_id) {
-        console.log('Message sent successfully, marking optimistic message as sent, waiting for echo webhook')
-        
-        setMessages(prev => {
-          const updatedMessages = prev.map((msg: any) => 
-            msg.id === optimisticMessage.id 
-              ? { 
-                  ...msg, 
-                  id: data.message_id, 
-                  facebook_message_id: data.message_id,
-                  status: 'sent',
-                  // Keep optimistic timestamp for now, will be updated by echo webhook
-                  pendingEcho: true
-                }
-              : msg
-          )
-          
-          console.log('Updated messages (marked as sent):', updatedMessages)
-          return updatedMessages
-        })
-        
-        // Start echo timeout - if no echo received within 10 seconds, show retry option
+        // Message sent successfully, wait for echo
         setTimeout(() => {
-          setMessages(prev => {
-            const message = prev.find(msg => msg.facebook_message_id === data.message_id)
-            if (message && message.pendingEcho) {
-              console.log('Echo timeout - message may not have been delivered')
-              return prev.map(msg => 
-                msg.facebook_message_id === data.message_id 
-                  ? { ...msg, status: 'pending_echo', showRetry: true }
-                  : msg
-              )
-            }
-            return prev
+          // Remove from pending after 5 seconds (echo should arrive by then)
+          setPendingMessages(prev => {
+            const next = new Set(prev)
+            next.delete(tempId)
+            return next
           })
-        }, 10000) // 10 second timeout
-        
-        // Invalidate cache to ensure fresh data on reload
-        setMessageCache(prevCache => {
-          const newCache = { ...prevCache }
-          delete newCache[selectedConversation.id]
-          return newCache
-        })
+          
+          // Update message status
+          setMessages(prev => prev.map(msg => 
+            msg.id === tempId ? { ...msg, status: 'sent' } : msg
+          ))
+        }, 5000)
       } else {
-        // If we don't get a proper response, try to handle it gracefully
-        console.log('Incomplete response, attempting to handle:', data)
-        
-        if (data.message_id) {
-          // We have a message ID, so it was sent successfully
-          console.log('Message sent with ID, updating optimistic message')
-          
-          setMessages(prev => {
-            const updatedMessages = prev.map((msg: any) => 
-              msg.id === optimisticMessage.id 
-                ? { 
-                    ...msg, 
-                    id: data.message_id, 
-                    facebook_message_id: data.message_id,
-                    // Mark as successfully sent
-                    status: 'sent'
-                  }
-                : msg
-            )
-            
-            console.log('Updated messages (with ID):', updatedMessages)
-            return updatedMessages
-          })
-        } else {
-          // No message ID, but no error either - keep optimistic message
-          console.log('No message ID, keeping optimistic message')
-          
-          setMessages(prev => {
-            const updatedMessages = prev.map((msg: any) => 
-              msg.id === optimisticMessage.id 
-                ? { ...msg, status: 'pending' }
-                : msg
-            )
-            
-            console.log('Updated messages (pending):', updatedMessages)
-            return updatedMessages
-          })
-        }
-        
-        // Always invalidate cache to ensure fresh data on reload
-        setMessageCache(prevCache => {
-          const newCache = { ...prevCache }
-          delete newCache[selectedConversation.id]
-          return newCache
+        // Remove from pending and mark as failed
+        setPendingMessages(prev => {
+          const next = new Set(prev)
+          next.delete(tempId)
+          return next
         })
+        
+        setMessages(prev => prev.map(msg => 
+          msg.id === tempId ? { ...msg, status: 'failed' } : msg
+        ))
+        
+        alert(`Failed to send message: ${data.error}`)
       }
-
-      // Also update the conversation list to show the new message and maintain sorting
-      setConversations(prev => {
-        const updatedConversations = prev.map(conv => {
-          if (conv.id === selectedConversation.id) {
-            return {
-              ...conv,
-              last_message_time: now, // Use the same timestamp as the message
-              updated_at: new Date().toISOString()
-            }
-          }
-          return conv
-        })
-        
-        // Re-sort conversations by last_message_time (newest first)
-        return updatedConversations.sort((a: any, b: any) => {
-          const timeA = new Date(a.last_message_time || a.updated_at || 0).getTime()
-          const timeB = new Date(b.last_message_time || b.updated_at || 0).getTime()
-          return timeB - timeA // DESC order (newest first)
-        })
+    } catch (error) {
+      setPendingMessages(prev => {
+        const next = new Set(prev)
+        next.delete(tempId)
+        return next
       })
       
-      // Show success message briefly
-      setError('')
-      setSuccessMessage('Message sent successfully!')
-      setTimeout(() => setSuccessMessage(''), 3000) // Hide after 3 seconds
-      
-    } catch (error: any) {
-      console.error('Error sending message:', error)
-      setError('Failed to send message: ' + (error.message || 'Unknown error'))
-      // Remove optimistic message on error
-      setMessages(prev => prev.filter(msg => msg.id !== optimisticMessage.id))
-      // Restore the message text
-      setNewMessageText(messageText)
+      console.error('Failed to send message:', error)
+      alert('Failed to send message. Please try again.')
     } finally {
       setSendingMessage(false)
     }
@@ -1730,43 +1616,16 @@ export default function InboxPage() {
                           <p className="text-xs opacity-75">
                             {new Date(message.created_at).toLocaleString()}
                           </p>
-                          {/* Show message status for outgoing messages */}
-                          {message.is_from_page && (
-                            <div className="flex items-center text-xs opacity-75">
-                              {message.id.startsWith('temp-') && (
-                                <>
-                                  <div className="w-2 h-2 bg-current rounded-full animate-pulse mr-1"></div>
-                                  Sending...
-                                </>
-                              )}
-                              {message.status === 'sent' && (
-                                <>
-                                  <div className="w-3 h-3 bg-current rounded-full mr-1">✓</div>
-                                  Sent
-                                </>
-                              )}
-                              {message.status === 'delivered' && (
-                                <>
-                                  <div className="w-3 h-3 bg-current rounded-full mr-1">✓</div>
-                                  Delivered
-                                </>
-                              )}
-                              {message.status === 'pending_echo' && (
-                                <>
-                                  <div className="w-2 h-2 bg-current rounded-full animate-pulse mr-1"></div>
-                                  Pending Echo
-                                </>
-                              )}
-                              {message.showRetry && (
-                                <button
-                                  onClick={() => retryMessage(message)}
-                                  className="ml-2 px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600 transition-colors"
-                                  title="Retry sending message"
-                                >
-                                  Retry
-                                </button>
-                              )}
-                            </div>
+                          {message.is_from_page && message.status === 'pending' && (
+                            <span className="text-xs text-blue-200">Sending...</span>
+                          )}
+                          {message.is_from_page && message.status === 'failed' && (
+                            <button
+                              onClick={() => retryMessage(message)}
+                              className="text-xs text-red-200 underline"
+                            >
+                              Retry
+                            </button>
                           )}
                         </div>
                       </div>
