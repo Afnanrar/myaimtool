@@ -80,54 +80,42 @@ export async function POST(req: NextRequest) {
       }, { status: 400 })
     }
     
-    // Save message to database with proper structure
-    const messageData = {
-      id: data.message_id, // Use Facebook message ID as primary key
-      conversation_id: conversationId,
-      facebook_message_id: data.message_id,
-      sender_id: conversation.page.facebook_page_id,
-      page_id: conversation.page.id,
-      message_text: message,
-      is_from_page: true,
-      direction: 'outgoing',
-      created_at: new Date().toISOString(),
-      event_time: new Date().toISOString()
-    }
+    // Return 200 immediately after Facebook API success - don't block on DB operations
+    console.log('Facebook API success, returning immediately with message_id:', data.message_id)
     
-    const { data: savedMessage, error: saveError } = await supabaseAdmin!
-      .from('messages')
-      .upsert(messageData, {
+    // Fire-and-forget database operations (don't block response)
+    Promise.all([
+      // Save message to database with proper structure
+      supabaseAdmin!.from('messages').upsert({
+        id: data.message_id, // Use Facebook message ID as primary key
+        conversation_id: conversationId,
+        facebook_message_id: data.message_id,
+        sender_id: conversation.page.facebook_page_id,
+        page_id: conversation.page.id,
+        message_text: message,
+        is_from_page: true,
+        direction: 'outgoing',
+        created_at: new Date().toISOString(),
+        event_time: new Date().toISOString()
+      }, {
         onConflict: 'id' // Upsert by Facebook message ID
-      })
-      .select()
-      .single()
-    
-    if (saveError) {
-      console.error('Error saving message to database:', saveError)
-      throw new Error('Failed to save message to database')
-    }
-    
-    console.log('Message saved to database:', savedMessage)
-    
-    // Update conversation last message time
-    await supabaseAdmin!
-      .from('conversations')
-      .update({ 
+      }),
+      
+      // Update conversation last message time
+      supabaseAdmin!.from('conversations').update({ 
         last_message_time: new Date().toISOString(),
         unread_count: 0 
-      })
-      .eq('id', conversationId)
-    
-    console.log('Message sent successfully, returning response:', { 
-      success: true,
-      message_id: data.message_id,
-      message: savedMessage 
+      }).eq('id', conversationId)
+    ]).catch(error => {
+      console.error('Background DB operations failed:', error)
+      // Don't fail the request - these are background operations
     })
     
     return NextResponse.json({ 
       success: true,
       message_id: data.message_id,
-      message: savedMessage // Return the complete saved message
+      // Don't return saved message - it will come via webhook echo
+      timestamp: new Date().toISOString()
     })
     
   } catch (error: any) {

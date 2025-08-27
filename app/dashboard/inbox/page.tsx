@@ -730,13 +730,12 @@ export default function InboxPage() {
             arr.findIndex((m: any) => m.id === msg.id) === index
           )
           
-          // Sort by created_time (oldest first, newest last)
+          // Sort by event_time ASC (oldest first, newest last)
           newMessages = uniqueMessages.sort((a: any, b: any) => {
-            // Convert timestamps to milliseconds if they're in seconds
-            const timeA = typeof a.created_at === 'string' ? new Date(a.created_at).getTime() : 
-                         typeof a.created_at === 'number' ? (a.created_at < 1000000000000 ? a.created_at * 1000 : a.created_at) : 0
-            const timeB = typeof b.created_at === 'string' ? new Date(b.created_at).getTime() : 
-                         typeof b.created_at === 'number' ? (b.created_at < 1000000000000 ? b.created_at * 1000 : b.created_at) : 0
+            const timeA = typeof a.event_time === 'string' ? new Date(a.event_time).getTime() : 
+                         typeof a.event_time === 'number' ? (a.event_time < 1000000000000 ? a.event_time * 1000 : a.event_time) : 0
+            const timeB = typeof b.event_time === 'string' ? new Date(b.event_time).getTime() : 
+                         typeof b.event_time === 'number' ? (b.event_time < 1000000000000 ? b.event_time * 1000 : b.event_time) : 0
             return timeA - timeB
           })
           
@@ -850,13 +849,12 @@ export default function InboxPage() {
              arr.findIndex((m: any) => m.id === msg.id) === index
            )
            
-           // Sort by created_time (oldest first, newest last)
+           // Sort by event_time ASC (oldest first, newest last)
            const sortedMessages = uniqueMessages.sort((a: any, b: any) => {
-             // Convert timestamps to milliseconds if they're in seconds
-             const timeA = typeof a.created_at === 'string' ? new Date(a.created_at).getTime() : 
-                          typeof a.created_at === 'number' ? (a.created_at < 1000000000000 ? a.created_at * 1000 : a.created_at) : 0
-             const timeB = typeof b.created_at === 'string' ? new Date(b.created_at).getTime() : 
-                          typeof b.created_at === 'number' ? (b.created_at < 1000000000000 ? b.created_at * 1000 : b.created_at) : 0
+             const timeA = typeof a.event_time === 'string' ? new Date(a.event_time).getTime() : 
+                          typeof a.event_time === 'number' ? (a.event_time < 1000000000000 ? a.event_time * 1000 : a.event_time) : 0
+             const timeB = typeof b.event_time === 'string' ? new Date(b.event_time).getTime() : 
+                          typeof b.event_time === 'number' ? (b.event_time < 1000000000000 ? b.event_time * 1000 : b.event_time) : 0
              return timeA - timeB
            })
            
@@ -895,6 +893,55 @@ export default function InboxPage() {
   const handleRealtimeMessage = (newMessage: any) => {
     console.log('Processing real-time message:', newMessage)
     
+    // Check if this is an echo webhook (outgoing message confirmation)
+    if (newMessage.is_echo && newMessage.is_from_page) {
+      console.log('Echo webhook received for outgoing message:', newMessage.facebook_message_id)
+      
+      // Find and replace the optimistic message with the canonical echo message
+      setMessages(prev => {
+        const updatedMessages = prev.map((msg: any) => {
+          if (msg.facebook_message_id === newMessage.facebook_message_id || 
+              (msg.pendingEcho && msg.facebook_message_id === newMessage.facebook_message_id)) {
+            console.log('Replacing optimistic message with echo webhook:', newMessage)
+            return {
+              ...newMessage,
+              status: 'delivered', // Mark as fully delivered
+              pendingEcho: false, // No longer pending echo
+              showRetry: false // Remove retry option
+            }
+          }
+          return msg
+        })
+        
+        // Re-sort by event_time ASC (oldest first, newest last)
+        return updatedMessages.sort((a: any, b: any) => {
+          const timeA = typeof a.event_time === 'string' ? new Date(a.event_time).getTime() : 
+                       typeof a.event_time === 'number' ? (a.event_time < 1000000000000 ? a.event_time * 1000 : a.event_time) : 0
+          const timeB = typeof b.event_time === 'string' ? new Date(b.event_time).getTime() : 
+                       typeof b.event_time === 'number' ? (b.event_time < 1000000000000 ? b.event_time * 1000 : b.event_time) : 0
+          return timeA - timeB
+        })
+      })
+      
+      // Update conversation list with echo timestamp
+      setConversations(prev => {
+        const updatedConversations = prev.map(conv => 
+          conv.id === newMessage.conversation_id 
+            ? { ...conv, last_message_time: newMessage.event_time, unread_count: 0 }
+            : conv
+        )
+        
+        // Re-sort conversations by last_message_time (newest first)
+        return updatedConversations.sort((a: any, b: any) => {
+          const timeA = new Date(a.last_message_time || a.updated_at || 0).getTime()
+          const timeB = new Date(b.last_message_time || b.updated_at || 0).getTime()
+          return timeB - timeA // DESC order (newest first)
+        })
+      })
+      
+      return // Don't process echo messages as regular incoming messages
+    }
+    
     // Check if this message belongs to the currently open conversation
     if (selectedConversation && newMessage.conversation_id === selectedConversation.id) {
       console.log('Adding new message to current conversation')
@@ -908,13 +955,12 @@ export default function InboxPage() {
         // Add new message and re-sort to maintain chronological order
         const updatedMessages = [...prev, newMessage]
         
-        // Sort by created_time (oldest first, newest last)
+        // Sort by event_time ASC (oldest first, newest last)
         return updatedMessages.sort((a: any, b: any) => {
-          // Convert timestamps to milliseconds if they're in seconds
-          const timeA = typeof a.created_at === 'string' ? new Date(a.created_at).getTime() : 
-                       typeof a.created_at === 'number' ? (a.created_at < 1000000000000 ? a.created_at * 1000 : a.created_at) : 0
-          const timeB = typeof b.created_at === 'string' ? new Date(b.created_at).getTime() : 
-                       typeof b.created_at === 'number' ? (b.created_at < 1000000000000 ? b.created_at * 1000 : b.created_at) : 0
+          const timeA = typeof a.event_time === 'string' ? new Date(a.event_time).getTime() : 
+                       typeof a.event_time === 'number' ? (a.event_time < 1000000000000 ? a.event_time * 1000 : a.event_time) : 0
+          const timeB = typeof b.event_time === 'string' ? new Date(b.event_time).getTime() : 
+                       typeof b.event_time === 'number' ? (b.event_time < 1000000000000 ? b.event_time * 1000 : b.event_time) : 0
           return timeA - timeB
         })
       })
@@ -1016,6 +1062,20 @@ export default function InboxPage() {
     return () => clearInterval(pollInterval)
   }, [selectedConversation, selectedPage, messages.length])
   
+  // Retry sending a failed message
+  const retryMessage = async (message: any) => {
+    if (!message.message_text || !selectedConversation) return
+    
+    console.log('Retrying message:', message)
+    
+    // Remove the failed message
+    setMessages(prev => prev.filter(msg => msg.id !== message.id))
+    
+    // Send the message again
+    setNewMessageText(message.message_text)
+    await sendMessage()
+  }
+  
   // Removed loadMessagesSilently to prevent multiple message loading sources
   // All message loading now goes through the single loadMessages function
 
@@ -1093,32 +1153,48 @@ export default function InboxPage() {
         return
       }
       
-      // Message sent successfully - replace optimistic message with real one
-      if (data.success && data.message_id && data.message) {
-        console.log('Replacing optimistic message with real message:', data.message)
+      // Message sent successfully - mark optimistic message as sent, wait for echo webhook
+      if (data.success && data.message_id) {
+        console.log('Message sent successfully, marking optimistic message as sent, waiting for echo webhook')
         
         setMessages(prev => {
           const updatedMessages = prev.map((msg: any) => 
             msg.id === optimisticMessage.id 
-              ? { ...msg, ...data.message, id: data.message_id } // Use complete saved message data
+              ? { 
+                  ...msg, 
+                  id: data.message_id, 
+                  facebook_message_id: data.message_id,
+                  status: 'sent',
+                  // Keep optimistic timestamp for now, will be updated by echo webhook
+                  pendingEcho: true
+                }
               : msg
           )
           
-          console.log('Updated messages:', updatedMessages)
-          
-          // Update the cache with the new messages
-          setMessageCache(prevCache => ({
-            ...prevCache,
-            [selectedConversation.id]: updatedMessages
-          }))
-          
+          console.log('Updated messages (marked as sent):', updatedMessages)
           return updatedMessages
         })
+        
+        // Start echo timeout - if no echo received within 10 seconds, show retry option
+        setTimeout(() => {
+          setMessages(prev => {
+            const message = prev.find(msg => msg.facebook_message_id === data.message_id)
+            if (message && message.pendingEcho) {
+              console.log('Echo timeout - message may not have been delivered')
+              return prev.map(msg => 
+                msg.facebook_message_id === data.message_id 
+                  ? { ...msg, status: 'pending_echo', showRetry: true }
+                  : msg
+              )
+            }
+            return prev
+          })
+        }, 10000) // 10 second timeout
         
         // Invalidate cache to ensure fresh data on reload
         setMessageCache(prevCache => {
           const newCache = { ...prevCache }
-          delete newCache[selectedConversation.id] // Remove cached messages for this conversation
+          delete newCache[selectedConversation.id]
           return newCache
         })
       } else {
@@ -1669,11 +1745,26 @@ export default function InboxPage() {
                                   Sent
                                 </>
                               )}
-                              {message.status === 'pending' && (
+                              {message.status === 'delivered' && (
+                                <>
+                                  <div className="w-3 h-3 bg-current rounded-full mr-1">✓</div>
+                                  Delivered
+                                </>
+                              )}
+                              {message.status === 'pending_echo' && (
                                 <>
                                   <div className="w-2 h-2 bg-current rounded-full animate-pulse mr-1"></div>
-                                  Pending
+                                  Pending Echo
                                 </>
+                              )}
+                              {message.showRetry && (
+                                <button
+                                  onClick={() => retryMessage(message)}
+                                  className="ml-2 px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600 transition-colors"
+                                  title="Retry sending message"
+                                >
+                                  Retry
+                                </button>
                               )}
                             </div>
                           )}
@@ -1799,3 +1890,4 @@ export default function InboxPage() {
     </div>
   )
 }
+

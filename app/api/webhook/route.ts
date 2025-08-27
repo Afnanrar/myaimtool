@@ -96,14 +96,18 @@ async function handleMessageEvent(event: any, pageId: string) {
     
           // Save message to database with proper structure
       if (event.message && event.message.text) {
+        // Check if this is an echo message (outgoing message confirmation)
+        const isEcho = event.message.is_echo === true
+        
         const messageData = {
           id: event.message.mid, // Use Facebook message ID as primary key
           conversation_id: conversation?.id || (await getConversationId(event.sender.id, pageId)),
           facebook_message_id: event.message.mid,
-          sender_id: event.sender.id,
+          sender_id: isEcho ? pageId : event.sender.id, // For echo, sender is the page
           message_text: event.message.text,
-          is_from_page: false,
-          direction: 'incoming',
+          is_from_page: isEcho, // Echo messages are from the page
+          direction: isEcho ? 'outgoing' : 'incoming',
+          is_echo: isEcho, // Track echo status
           created_at: new Date().toISOString(), // Database creation time
           event_time: new Date(parseInt(event.timestamp)).toISOString(), // Facebook event timestamp (UTC)
           page_id: pageId
