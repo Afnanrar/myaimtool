@@ -6,6 +6,11 @@ export async function GET(
   { params }: { params: { conversationId: string } }
 ) {
   try {
+    if (!supabaseAdmin) {
+      console.error('Supabase admin client not available')
+      return NextResponse.json({ messages: [] }, { status: 500 })
+    }
+
     const { data: messages } = await supabaseAdmin
       .from('messages')
       .select('*')
@@ -14,6 +19,7 @@ export async function GET(
     
     return NextResponse.json({ messages: messages || [] })
   } catch (error) {
-    return NextResponse.json({ messages: [] })
+    console.error('Error fetching messages:', error)
+    return NextResponse.json({ messages: [] }, { status: 500 })
   }
 }
