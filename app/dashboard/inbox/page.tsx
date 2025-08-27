@@ -1074,10 +1074,18 @@ export default function InboxPage() {
       
       const data = await response.json()
       
-      console.log('Message send response:', data)
+      console.log('Message send response:', { 
+        status: response.status, 
+        ok: response.ok, 
+        data: data 
+      })
       
-      if (!response.ok) {
-        setError(data.error || 'Failed to send message')
+      // Check for both HTTP errors and API-level errors
+      if (!response.ok || !data.success) {
+        const errorMessage = data.error || data.details || 'Failed to send message'
+        console.error('Message send failed:', { response: response.ok, data })
+        setError(errorMessage)
+        
         // Remove optimistic message on error
         setMessages(prev => prev.filter((msg: any) => msg.id !== optimisticMessage.id))
         // Restore the message text
@@ -1114,34 +1122,51 @@ export default function InboxPage() {
           return newCache
         })
       } else {
-        // If we don't get a proper response, just keep the optimistic message
-        // but mark it as sent
-        console.log('No proper response, marking optimistic message as sent')
+        // If we don't get a proper response, try to handle it gracefully
+        console.log('Incomplete response, attempting to handle:', data)
         
-        setMessages(prev => {
-          const updatedMessages = prev.map((msg: any) => 
-            msg.id === optimisticMessage.id 
-              ? { ...msg, id: `sent-${Date.now()}`, facebook_message_id: `sent-${Date.now()}` }
-              : msg
-          )
+        if (data.message_id) {
+          // We have a message ID, so it was sent successfully
+          console.log('Message sent with ID, updating optimistic message')
           
-          console.log('Updated messages (fallback):', updatedMessages)
+          setMessages(prev => {
+            const updatedMessages = prev.map((msg: any) => 
+              msg.id === optimisticMessage.id 
+                ? { 
+                    ...msg, 
+                    id: data.message_id, 
+                    facebook_message_id: data.message_id,
+                    // Mark as successfully sent
+                    status: 'sent'
+                  }
+                : msg
+            )
+            
+            console.log('Updated messages (with ID):', updatedMessages)
+            return updatedMessages
+          })
+        } else {
+          // No message ID, but no error either - keep optimistic message
+          console.log('No message ID, keeping optimistic message')
           
-                  // Update the cache
-        setMessageCache(prevCache => ({
-          ...prevCache,
-          [selectedConversation.id]: updatedMessages
-        }))
+          setMessages(prev => {
+            const updatedMessages = prev.map((msg: any) => 
+              msg.id === optimisticMessage.id 
+                ? { ...msg, status: 'pending' }
+                : msg
+            )
+            
+            console.log('Updated messages (pending):', updatedMessages)
+            return updatedMessages
+          })
+        }
         
-        // Invalidate cache to ensure fresh data on reload
+        // Always invalidate cache to ensure fresh data on reload
         setMessageCache(prevCache => {
           const newCache = { ...prevCache }
           delete newCache[selectedConversation.id]
           return newCache
         })
-        
-        return updatedMessages
-      })
       }
 
       // Also update the conversation list to show the new message and maintain sorting
@@ -1629,10 +1654,27 @@ export default function InboxPage() {
                           <p className="text-xs opacity-75">
                             {new Date(message.created_at).toLocaleString()}
                           </p>
-                          {message.id.startsWith('temp-') && (
+                          {/* Show message status for outgoing messages */}
+                          {message.is_from_page && (
                             <div className="flex items-center text-xs opacity-75">
-                              <div className="w-2 h-2 bg-current rounded-full animate-pulse mr-1"></div>
-                              Sending...
+                              {message.id.startsWith('temp-') && (
+                                <>
+                                  <div className="w-2 h-2 bg-current rounded-full animate-pulse mr-1"></div>
+                                  Sending...
+                                </>
+                              )}
+                              {message.status === 'sent' && (
+                                <>
+                                  <div className="w-3 h-3 bg-current rounded-full mr-1">✓</div>
+                                  Sent
+                                </>
+                              )}
+                              {message.status === 'pending' && (
+                                <>
+                                  <div className="w-2 h-2 bg-current rounded-full animate-pulse mr-1"></div>
+                                  Pending
+                                </>
+                              )}
                             </div>
                           )}
                         </div>

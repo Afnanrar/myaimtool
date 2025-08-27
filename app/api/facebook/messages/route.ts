@@ -60,8 +60,22 @@ export async function POST(req: NextRequest) {
     
     if (data.error) {
       console.error('Facebook API Error:', data.error)
+      
+      // Handle specific Facebook error codes
+      let errorMessage = 'Failed to send message'
+      if (data.error.code === 100) {
+        errorMessage = 'User not found or not eligible for messaging'
+      } else if (data.error.code === 10) {
+        errorMessage = 'Message sent outside allowed window (24h limit)'
+      } else if (data.error.code === 190) {
+        errorMessage = 'Invalid access token - please reconnect your Facebook page'
+      } else {
+        errorMessage = `Facebook API Error: ${data.error.message}`
+      }
+      
       return NextResponse.json({ 
-        error: `Failed to send message: ${data.error.message}`,
+        success: false,
+        error: errorMessage,
         details: data.error
       }, { status: 400 })
     }
@@ -104,6 +118,12 @@ export async function POST(req: NextRequest) {
       })
       .eq('id', conversationId)
     
+    console.log('Message sent successfully, returning response:', { 
+      success: true,
+      message_id: data.message_id,
+      message: savedMessage 
+    })
+    
     return NextResponse.json({ 
       success: true,
       message_id: data.message_id,
@@ -112,10 +132,17 @@ export async function POST(req: NextRequest) {
     
   } catch (error: any) {
     console.error('Error sending message:', error)
-    return NextResponse.json({ 
+    
+    // Return error with proper structure
+    const errorResponse = {
+      success: false,
       error: 'Failed to send message',
-      details: error.message 
-    }, { status: 500 })
+      details: error.message || 'Unknown error'
+    }
+    
+    console.log('Returning error response:', errorResponse)
+    
+    return NextResponse.json(errorResponse, { status: 500 })
   }
 }
 
