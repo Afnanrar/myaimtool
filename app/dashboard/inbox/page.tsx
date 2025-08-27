@@ -79,51 +79,51 @@ export default function InboxPage() {
     }
   }, [selectedPage])
 
-  // Real-time subscriptions for live updates
-  useEffect(() => {
-    if (!supabase || !selectedPage) return
+  // DISABLED: Real-time subscriptions causing message scrolling and refreshing
+  // useEffect(() => {
+  //   if (!supabase || !selectedPage) return
     
-    console.log('Setting up real-time subscriptions for page:', selectedPage.id)
+  //   console.log('Setting up real-time subscriptions for page:', selectedPage.id)
     
-    // Subscribe to new messages
-    const messagesSubscription = supabase
-      .channel('messages-realtime')
-      .on('postgres_changes', 
-        { 
-          event: 'INSERT', 
-          schema: 'public', 
-          table: 'messages',
-          filter: `page_id=eq.${selectedPage.id}`
-        },
-        (payload) => {
-          console.log('New message received via real-time:', payload)
-          handleRealtimeMessage(payload.new)
-        }
-      )
-      .subscribe()
+  //   // Subscribe to new messages
+  //   const messagesSubscription = supabase
+  //     .channel('messages-realtime')
+  //     .on('postgres_changes', 
+  //       { 
+  //         event: 'INSERT', 
+  //         schema: 'public', 
+  //         table: 'messages',
+  //         filter: `page_id=eq.${selectedPage.id}`
+  //       },
+  //       (payload) => {
+  //         console.log('New message received via real-time:', payload)
+  //         handleRealtimeMessage(payload.new)
+  //       }
+  //     )
+  //     .subscribe()
     
-    // Subscribe to conversation updates
-    const conversationsSubscription = supabase
-      .channel('conversations-realtime')
-      .on('postgres_changes', 
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'conversations',
-          filter: `page_id=eq.${selectedPage.id}`
-        },
-        (payload) => {
-          console.log('Conversation update received via real-time:', payload)
-          handleRealtimeConversation(payload)
-        }
-      )
-      .subscribe()
+  //   // Subscribe to conversation updates
+  //   const conversationsSubscription = supabase
+  //     .channel('conversations-realtime')
+  //     .on('postgres_changes', 
+  //       { 
+  //         event: '*', 
+  //         schema: 'public', 
+  //         table: 'conversations',
+  //         filter: `page_id=eq.${selectedPage.id}`
+  //       },
+  //       (payload) => {
+  //         console.log('Conversation update received via real-time:', payload)
+  //         handleRealtimeConversation(payload)
+  //       }
+  //     )
+  //     .subscribe()
     
-    return () => {
-      messagesSubscription.unsubscribe()
-      conversationsSubscription.unsubscribe()
-    }
-  }, [selectedPage, supabase])
+  //   return () => {
+  //     messagesSubscription.unsubscribe()
+  //     conversationsSubscription.unsubscribe()
+  //   }
+  // }, [selectedPage, supabase])
 
   // DISABLED: Real-time message polling causing confusion
   // useEffect(() => {
@@ -653,7 +653,7 @@ export default function InboxPage() {
     // Show loading state immediately
     setLoadingMessages(true)
     
-    // Load messages for the new conversation using unique ID
+    // Load messages for the new conversation using unique ID (no force refresh to prevent conflicts)
     loadMessages(conversation, false, false, requestId)
     
     console.log(`Selected conversation: ${conversation.id} (${conversation.participant_name}) with request ID: ${requestId}`)
@@ -793,8 +793,8 @@ export default function InboxPage() {
         setError('')
         setMessages(newMessages)
         
-        // Only auto-scroll for new conversations, not when loading older messages
-        if (!loadOlder) {
+        // Only auto-scroll for new conversations, not when loading older messages or refreshing
+        if (!loadOlder && !forceRefresh) {
           setTimeout(() => scrollToBottomForNewMessage(), 25)
         }
       } else {
@@ -1039,29 +1039,29 @@ export default function InboxPage() {
     }
   }
 
-  // Polling mechanism for real-time updates (fallback)
-  useEffect(() => {
-    if (!selectedConversation || !selectedPage) return
+  // DISABLED: Polling mechanism causing message conflicts and scrolling
+  // useEffect(() => {
+  //   if (!selectedConversation || !selectedPage) return
     
-    const pollInterval = setInterval(async () => {
-      try {
-        // Check for new messages every 3 seconds
-        const response = await fetch(`/api/facebook/messages?conversationId=${selectedConversation.id}&pageSize=1`)
-        const data = await response.json()
+  //   const pollInterval = setInterval(async () => {
+  //     try {
+  //       // Check for new messages every 3 seconds
+  //       const response = await fetch(`/api/facebook/messages?conversationId=${selectedConversation.id}&pageSize=1`)
+  //       const data = await response.json()
         
-        if (response.ok && data.total && data.total > messages.length) {
-          console.log('Polling detected new messages, refreshing...')
-          const requestId = Date.now().toString()
-          ;(window as any).currentRequestId = requestId
-          loadMessages(selectedConversation, true, false, requestId)
-        }
-      } catch (error) {
-        console.log('Polling error:', error)
-      }
-    }, 3000) // Poll every 3 seconds
+  //       if (response.ok && data.total && data.total > messages.length) {
+  //         console.log('Polling detected new messages, refreshing...')
+  //         const requestId = Date.now().toString()
+  //           ;(window as any).currentRequestId = requestId
+  //         loadMessages(selectedConversation, true, false, requestId)
+  //       }
+  //     } catch (error) {
+  //       console.log('Polling error:', error)
+  //     }
+  //   }, 3000) // Poll every 3 seconds
     
-    return () => clearInterval(pollInterval)
-  }, [selectedConversation, selectedPage, messages.length])
+  //   return () => clearInterval(pollInterval)
+  // }, [selectedConversation, selectedPage, messages.length])
   
   // Retry sending a failed message
   const retryMessage = async (message: any) => {
@@ -1377,6 +1377,27 @@ export default function InboxPage() {
         
         {selectedConversation ? (
           <>
+            {/* Info banner about manual refresh */}
+            <div className="p-3 bg-blue-50 border-b border-blue-200">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center text-sm text-blue-800">
+                  <div className="w-4 h-4 mr-2">ℹ️</div>
+                  <span>Messages are loaded once. Click the refresh button to check for new messages.</span>
+                </div>
+                <button
+                  onClick={() => {
+                    const requestId = Date.now().toString()
+                    ;(window as any).currentRequestId = requestId
+                    loadMessages(selectedConversation, true, false, requestId)
+                  }}
+                  disabled={loadingMessages}
+                  className="px-3 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600 disabled:opacity-50 transition-colors"
+                >
+                  {loadingMessages ? 'Checking...' : 'Check New Messages'}
+                </button>
+              </div>
+            </div>
+            
             <div className="p-4 border-b">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -1436,7 +1457,7 @@ export default function InboxPage() {
                     }}
                     disabled={loadingMessages}
                     className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                    title="Refresh messages manually"
+                    title="Check for new messages"
                   >
                     <div className={`w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full ${loadingMessages ? 'animate-spin' : ''}`}></div>
                   </button>
