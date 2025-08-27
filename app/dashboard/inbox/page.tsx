@@ -1377,27 +1377,6 @@ export default function InboxPage() {
         
         {selectedConversation ? (
           <>
-            {/* Info banner about manual refresh */}
-            <div className="p-3 bg-blue-50 border-b border-blue-200">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center text-sm text-blue-800">
-                  <div className="w-4 h-4 mr-2">ℹ️</div>
-                  <span>Messages are loaded once. Click the refresh button to check for new messages.</span>
-                </div>
-                <button
-                  onClick={() => {
-                    const requestId = Date.now().toString()
-                    ;(window as any).currentRequestId = requestId
-                    loadMessages(selectedConversation, true, false, requestId)
-                  }}
-                  disabled={loadingMessages}
-                  className="px-3 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600 disabled:opacity-50 transition-colors"
-                >
-                  {loadingMessages ? 'Checking...' : 'Check New Messages'}
-                </button>
-              </div>
-            </div>
-            
             <div className="p-4 border-b">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -1417,14 +1396,39 @@ export default function InboxPage() {
                         </div>
                       ) : (
                         <div className="flex items-center gap-1">
-                          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                          <span className="text-xs text-green-600">Fast Sync (2s)</span>
+                          <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+                          <span className="text-xs text-gray-500">Manual refresh</span>
                         </div>
                       )}
                     </div>
                   </div>
                 </div>
                 <div className="flex gap-2">
+                  {/* Professional refresh button with subtle styling */}
+                  <button
+                    onClick={() => {
+                      const requestId = Date.now().toString()
+                      ;(window as any).currentRequestId = requestId
+                      loadMessages(selectedConversation, true, false, requestId)
+                    }}
+                    disabled={loadingMessages}
+                    className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-50 rounded-lg transition-all duration-200 border border-gray-200 hover:border-gray-300"
+                    title="Check for new messages"
+                  >
+                    {loadingMessages ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                        <span>Checking...</span>
+                      </>
+                    ) : (
+                      <>
+                        <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full"></div>
+                        <span>Refresh</span>
+                      </>
+                    )}
+                  </button>
+                  
+                  {/* Sync button for Facebook messages */}
                   <button
                     onClick={async () => {
                       try {
@@ -1448,43 +1452,6 @@ export default function InboxPage() {
                     title="Sync incoming messages from Facebook"
                   >
                     <div className="w-4 h-4 border-2 border-green-400 border-t-transparent rounded-full"></div>
-                  </button>
-                  <button
-                    onClick={() => {
-                      const requestId = Date.now().toString()
-                      ;(window as any).currentRequestId = requestId
-                      loadMessages(selectedConversation, true, false, requestId)
-                    }}
-                    disabled={loadingMessages}
-                    className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                    title="Check for new messages"
-                  >
-                    <div className={`w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full ${loadingMessages ? 'animate-spin' : ''}`}></div>
-                  </button>
-                  
-                  <button
-                    onClick={async () => {
-                      try {
-                        const syncResponse = await fetch(`/api/facebook/messages/sync?conversationId=${selectedConversation.id}&pageId=${selectedPage.id}`)
-                        const syncData = await syncResponse.json()
-                        
-                        if (syncResponse.ok && syncData.newMessages && syncData.newMessages.length > 0) {
-                          console.log('Manual sync found new messages:', syncData.newMessages.length)
-                          // Reload messages to show new ones
-                          const requestId = Date.now().toString()
-                          ;(window as any).currentRequestId = requestId
-                          loadMessages(selectedConversation, true, false, requestId)
-                        } else {
-                          console.log('No new messages found via manual sync')
-                        }
-                      } catch (error) {
-                        console.error('Error in manual sync:', error)
-                      }
-                    }}
-                    className="p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
-                    title="Check for new messages from Facebook"
-                  >
-                    <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full"></div>
                   </button>
                   
                   {/* Debug button to check message count */}
