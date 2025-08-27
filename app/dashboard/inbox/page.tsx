@@ -16,7 +16,10 @@ export default function InboxPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [loadingPages, setLoadingPages] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const [isFirstLoad, setIsFirstLoad] = useState(true)
+  const [lastMessageCount, setLastMessageCount] = useState(0)
 
   // Load pages on mount
   useEffect(() => {
@@ -27,35 +30,45 @@ export default function InboxPage() {
   useEffect(() => {
     if (selectedPage) {
       loadConversations()
+      // Start polling for conversation updates
+      const interval = setInterval(() => {
+        loadConversations(true) // Silent refresh
+      }, 5000)
+      return () => clearInterval(interval)
     }
   }, [selectedPage])
 
   // Load messages when conversation is selected
   useEffect(() => {
     if (selectedConversation) {
+      setIsFirstLoad(true)
       loadMessages()
-      // Start polling for new messages
       startMessagePolling()
     } else {
-      // Stop polling when no conversation selected
       stopMessagePolling()
     }
     
     return () => stopMessagePolling()
   }, [selectedConversation])
 
-  // Auto-scroll to bottom when messages change
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  const scrollToBottom = (force = false) => {
+    if (messagesContainerRef.current) {
+      const container = messagesContainerRef.current
+      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100
+      
+      // Only auto-scroll if user is near bottom or it's forced
+      if (force || isNearBottom) {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+      }
+    }
+  }
 
   const startMessagePolling = () => {
-    // Poll every 3 seconds for new messages
     pollIntervalRef.current = setInterval(() => {
       if (selectedConversation) {
         loadMessages(true) // Silent refresh
       }
-    }, 3000)
+    }, 2000) // Poll every 2 seconds
   }
 
   const stopMessagePolling = () => {
@@ -84,8 +97,8 @@ export default function InboxPage() {
     }
   }
 
-  const loadConversations = async () => {
-    setLoading(true)
+  const loadConversations = async (silent = false) => {
+    if (!silent) setLoading(true)
     try {
       const response = await fetch(`/api/facebook/conversations?pageId=${selectedPage.id}`)
       const data = await response.json()
@@ -96,7 +109,7 @@ export default function InboxPage() {
     } catch (error) {
       console.error('Error loading conversations:', error)
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
 
@@ -110,7 +123,24 @@ export default function InboxPage() {
       const data = await response.json()
       
       if (data.messages) {
+        const previousCount = messages.length
         setMessages(data.messages)
+        
+        // Check if new messages arrived
+        if (data.messages.length > previousCount && silent) {
+          // New message arrived during polling
+          const hasUserMessage = data.messages.slice(previousCount).some((m: any) => !m.is_from_page)
+          if (hasUserMessage) {
+            // Auto-scroll only for new incoming messages
+            setTimeout(() => scrollToBottom(true), 100)
+          }
+        } else if (isFirstLoad) {
+          // First load - scroll to bottom
+          setTimeout(() => scrollToBottom(true), 100)
+          setIsFirstLoad(false)
+        }
+        
+        setLastMessageCount(data.messages.length)
       }
     } catch (error) {
       console.error('Error loading messages:', error)
@@ -136,6 +166,9 @@ export default function InboxPage() {
     setMessages(prev => [...prev, tempMessage])
     const messageText = newMessage
     setNewMessage('')
+    
+    // Scroll to bottom for sent message
+    setTimeout(() => scrollToBottom(true), 100)
     
     try {
       const response = await fetch('/api/facebook/messages', {
@@ -232,6 +265,7 @@ export default function InboxPage() {
                       onClick={() => {
                         setSelectedPage(page)
                         setDropdownOpen(false)
+                        setSelectedConversation(null)
                       }}
                       className="w-full flex items-center px-4 py-3 hover:bg-gray-50"
                     >
@@ -279,7 +313,10 @@ export default function InboxPage() {
           {filteredConversations.map((conv) => (
             <button
               key={conv.id}
-              onClick={() => setSelectedConversation(conv)}
+              onClick={() => {
+                setSelectedConversation(conv)
+                setMessages([]) // Clear messages before loading new ones
+              }}
               className={`w-full p-4 hover:bg-gray-50 flex items-start gap-3 ${
                 selectedConversation?.id === conv.id ? 'bg-blue-50 border-l-4 border-blue-500' : ''
               }`}
@@ -315,7 +352,10 @@ export default function InboxPage() {
                 </div>
               </div>
               <button
-                onClick={() => loadMessages()}
+                onClick={() => {
+                  setIsFirstLoad(false)
+                  loadMessages()
+                }}
                 className="text-blue-500 text-sm hover:underline"
               >
                 Check New Messages
@@ -323,35 +363,49 @@ export default function InboxPage() {
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
-              <div className="space-y-2">
-                {messages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className={`flex ${msg.is_from_page ? 'justify-end' : 'justify-start'}`}
-                  >
-                    <div className={`max-w-xs ${msg.is_from_page ? 'text-right' : 'text-left'}`}>
-                      <div
-                        className={`inline-block px-4 py-2 rounded-lg ${
-                          msg.is_from_page
-                            ? 'bg-blue-500 text-white'
-                            : 'bg-white text-gray-900'
-                        }`}
-                      >
-                        {msg.message_text}
-                      </div>
-                      <div className="mt-1 text-xs text-gray-500">
-                        {new Date(msg.created_at).toLocaleTimeString('en-US', { 
-                          hour: 'numeric', 
-                          minute: '2-digit' 
-                        })}
-                        {msg.status === 'sending' && ' • Sending...'}
+            <div 
+              ref={messagesContainerRef}
+              className="flex-1 overflow-y-auto p-4 bg-gray-50"
+              onScroll={(e) => {
+                // User is scrolling manually
+                setIsFirstLoad(false)
+              }}
+            >
+              {loading && messages.length === 0 ? (
+                <div className="text-center py-4">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+                  <p className="mt-2 text-gray-500">Loading messages...</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {messages.map((msg, index) => (
+                    <div
+                      key={msg.id}
+                      className={`flex ${msg.is_from_page ? 'justify-end' : 'justify-start'}`}
+                    >
+                      <div className={`max-w-xs ${msg.is_from_page ? 'text-right' : 'text-left'}`}>
+                        <div
+                          className={`inline-block px-4 py-2 rounded-lg ${
+                            msg.is_from_page
+                              ? 'bg-blue-500 text-white'
+                              : 'bg-white text-gray-900 border border-gray-200'
+                          }`}
+                        >
+                          {msg.message_text}
+                        </div>
+                        <div className="mt-1 text-xs text-gray-500">
+                          {new Date(msg.created_at).toLocaleTimeString('en-US', { 
+                            hour: 'numeric', 
+                            minute: '2-digit' 
+                          })}
+                          {msg.status === 'sending' && ' • Sending...'}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-                <div ref={messagesEndRef} />
-              </div>
+                  ))}
+                  <div ref={messagesEndRef} />
+                </div>
+              )}
             </div>
 
             {/* Input */}
@@ -361,9 +415,9 @@ export default function InboxPage() {
                   type="text"
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                  onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
                   placeholder="Type a message..."
-                  className="flex-1 px-4 py-2 border rounded-lg text-gray-900"
+                  className="flex-1 px-4 py-2 border rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   disabled={sending}
                 />
                 <button
