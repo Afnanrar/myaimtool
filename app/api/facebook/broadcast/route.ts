@@ -3,11 +3,18 @@ import { supabaseAdmin } from '@/lib/supabase'
 
 export async function POST(req: NextRequest) {
   try {
-    const { pageId, message, messageTag, useSpintax, audience } = await req.json()
+    const { pageId, message, messageTag, useSpintax, audience, sendToAllLeads } = await req.json()
     
-    if (!pageId || !message || !messageTag) {
+    if (!pageId || !message) {
       return NextResponse.json({ 
-        error: 'Missing required fields: pageId, message, and messageTag are required' 
+        error: 'Missing required fields: pageId and message are required' 
+      }, { status: 400 })
+    }
+    
+    // If sending to all leads, messageTag is required
+    if (sendToAllLeads && !messageTag) {
+      return NextResponse.json({ 
+        error: 'Message tag is required when sending to all leads (including outside 24h window)' 
       }, { status: 400 })
     }
     
@@ -56,6 +63,11 @@ export async function POST(req: NextRequest) {
         return false
       }
       
+      // If sending to all leads, include everyone (they'll get message tag if needed)
+      if (sendToAllLeads) {
+        return true
+      }
+      
       // Check if user has messaged within 24 hours
       if (conv.last_message_time) {
         const lastMessage = new Date(conv.last_message_time)
@@ -81,7 +93,7 @@ export async function POST(req: NextRequest) {
     
     if (eligibleConversations.length === 0) {
       return NextResponse.json({ 
-        error: 'No eligible recipients found. All users are either invalid or outside the 24-hour messaging window without a proper message tag.' 
+        error: 'No eligible recipients found. All users are either invalid or outside the 24-hour messaging window without a proper message tag. Try enabling "Send to ALL leads" with a message tag.' 
       }, { status: 400 })
     }
     
@@ -97,8 +109,8 @@ export async function POST(req: NextRequest) {
           message: { text: message }
         }
         
-        // Add message tag for messages after 24h
-        if (!isWithin24h && messageTag) {
+        // Add message tag for messages after 24h or when sending to all leads
+        if ((!isWithin24h && messageTag) || sendToAllLeads) {
           messagePayload.tag = messageTag
         }
         
@@ -122,10 +134,20 @@ export async function POST(req: NextRequest) {
         
         if (response.ok && result.message_id) {
           // Message sent successfully
-          if (isWithin24h) {
-            sent24h++
+          if (sendToAllLeads) {
+            // When sending to all leads, categorize by time but all get message tag
+            if (isWithin24h) {
+              sent24h++
+            } else {
+              sentWithTag++
+            }
           } else {
-            sentWithTag++
+            // Normal mode - categorize by time
+            if (isWithin24h) {
+              sent24h++
+            } else {
+              sentWithTag++
+            }
           }
           
           // Save broadcast record to database
