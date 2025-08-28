@@ -63,10 +63,14 @@ export async function GET(req: NextRequest) {
     
     let allConversations = []
     let nextUrl = `https://graph.facebook.com/v19.0/${page.facebook_page_id}/conversations?fields=participants,senders,updated_time,unread_count&limit=100&access_token=${page.access_token}`
+    let pageCount = 0
+    let totalFetched = 0
     
     // Fetch all conversations using pagination
     while (nextUrl) {
-      console.log('Fetching conversations from:', nextUrl)
+      pageCount++
+      console.log(`Fetching page ${pageCount} from Facebook...`)
+      
       const response = await fetch(nextUrl)
       const data = await response.json()
       
@@ -77,7 +81,8 @@ export async function GET(req: NextRequest) {
       
       if (data.data && data.data.length > 0) {
         allConversations.push(...data.data)
-        console.log(`Fetched ${data.data.length} conversations, total so far: ${allConversations.length}`)
+        totalFetched += data.data.length
+        console.log(`Page ${pageCount}: Fetched ${data.data.length} conversations, total so far: ${totalFetched}`)
       }
       
       // Check for next page
@@ -89,7 +94,7 @@ export async function GET(req: NextRequest) {
       }
     }
     
-    console.log(`Total conversations fetched from Facebook: ${allConversations.length}`)
+    console.log(`Pagination complete: ${pageCount} pages, ${totalFetched} total conversations fetched from Facebook`)
     
     // Process and save conversations
     const conversations = []
@@ -128,7 +133,12 @@ export async function GET(req: NextRequest) {
       conversations,
       totalFound: conversations.length,
       source: 'facebook',
-      message: `Fresh data loaded: ${conversations.length} conversations from Facebook`
+      message: `Fresh data loaded: ${conversations.length} conversations from Facebook`,
+      paginationInfo: {
+        pagesFetched: pageCount,
+        totalConversationsFetched: totalFetched,
+        finalCount: conversations.length
+      }
     })
     
   } catch (error) {

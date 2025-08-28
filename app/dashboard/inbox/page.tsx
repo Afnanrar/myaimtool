@@ -15,6 +15,8 @@ export default function InboxPage() {
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [loadingPages, setLoadingPages] = useState(true)
+  const [loadingConversations, setLoadingConversations] = useState(false)
+  const [conversationProgress, setConversationProgress] = useState<any>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -98,18 +100,59 @@ export default function InboxPage() {
   }
 
   const loadConversations = async (silent = false) => {
-    if (!silent) setLoading(true)
+    if (!silent) {
+      setLoadingConversations(true)
+      setConversationProgress({
+        status: 'loading',
+        message: 'Loading conversations...',
+        current: 0,
+        total: 0
+      })
+    }
+    
     try {
       const response = await fetch(`/api/facebook/conversations?pageId=${selectedPage.id}`)
       const data = await response.json()
       
       if (data.conversations) {
         setConversations(data.conversations)
+        
+        // Show progress information if available
+        if (data.paginationInfo && !silent) {
+          setConversationProgress({
+            status: 'complete',
+            message: `Loaded ${data.conversations.length} conversations from ${data.paginationInfo.pagesFetched} Facebook pages`,
+            current: data.conversations.length,
+            total: data.paginationInfo.totalConversationsFetched,
+            source: data.source
+          })
+        } else if (data.source === 'cache' && !silent) {
+          setConversationProgress({
+            status: 'complete',
+            message: `Showing ${data.conversations.length} cached conversations`,
+            current: data.conversations.length,
+            total: data.conversations.length,
+            source: 'cache'
+          })
+        }
+        
+        // Clear progress after 5 seconds
+        if (!silent) {
+          setTimeout(() => setConversationProgress(null), 5000)
+        }
       }
     } catch (error) {
       console.error('Error loading conversations:', error)
+      if (!silent) {
+        setConversationProgress({
+          status: 'error',
+          message: 'Failed to load conversations',
+          current: 0,
+          total: 0
+        })
+      }
     } finally {
-      if (!silent) setLoading(false)
+      if (!silent) setLoadingConversations(false)
     }
   }
 
@@ -316,10 +359,99 @@ export default function InboxPage() {
             <button
               onClick={refreshConversations}
               className="p-2 bg-white border rounded-lg hover:bg-gray-50"
-              disabled={loading}
+              disabled={loadingConversations}
             >
-              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`h-4 w-4 ${loadingConversations ? 'animate-spin' : ''}`} />
             </button>
+          </div>
+        </div>
+
+        {/* Progress Indicator */}
+        {conversationProgress && (
+          <div className={`px-4 py-3 border-b ${
+            conversationProgress.status === 'loading' ? 'bg-blue-50 border-blue-200' :
+            conversationProgress.status === 'complete' ? 'bg-green-50 border-green-200' :
+            conversationProgress.status === 'error' ? 'bg-red-50 border-red-200' :
+            'bg-gray-50 border-gray-200'
+          }`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {conversationProgress.status === 'loading' && (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+                )}
+                {conversationProgress.status === 'complete' && (
+                  <div className="w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
+                    <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                )}
+                {conversationProgress.status === 'error' && (
+                  <div className="w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
+                    <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                )}
+                <span className={`text-sm font-medium ${
+                  conversationProgress.status === 'loading' ? 'text-blue-700' :
+                  conversationProgress.status === 'complete' ? 'text-green-700' :
+                  conversationProgress.status === 'error' ? 'text-red-700' :
+                  'text-gray-700'
+                }`}>
+                  {conversationProgress.message}
+                </span>
+              </div>
+              
+              {conversationProgress.status === 'loading' && (
+                <div className="text-xs text-blue-600">
+                  Loading...
+                </div>
+              )}
+              
+              {conversationProgress.status === 'complete' && (
+                <div className="text-xs text-green-600">
+                  {conversationProgress.current} conversations loaded
+                </div>
+              )}
+              
+              {conversationProgress.status === 'error' && (
+                <div className="text-xs text-red-600">
+                  Failed
+                </div>
+              )}
+            </div>
+            
+            {/* Progress Bar for Loading */}
+            {conversationProgress.status === 'loading' && (
+              <div className="mt-2 w-full bg-blue-200 rounded-full h-2">
+                <div className="bg-blue-500 h-2 rounded-full animate-pulse" style={{ width: '100%' }}></div>
+              </div>
+            )}
+            
+            {/* Progress Bar for Complete */}
+            {conversationProgress.status === 'complete' && conversationProgress.total > 0 && (
+              <div className="mt-2 w-full bg-green-200 rounded-full h-2">
+                <div 
+                  className="bg-green-500 h-2 rounded-full transition-all duration-500" 
+                  style={{ width: `${(conversationProgress.current / conversationProgress.total) * 100}%` }}
+                ></div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Conversations Header */}
+        <div className="px-4 py-2 border-b bg-gray-50">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-700">
+              Conversations ({filteredConversations.length})
+            </span>
+            {conversations.length > 0 && (
+              <span className="text-xs text-gray-500">
+                Total: {conversations.length} | Filtered: {filteredConversations.length}
+              </span>
+            )}
           </div>
         </div>
 
