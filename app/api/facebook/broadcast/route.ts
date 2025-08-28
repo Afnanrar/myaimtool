@@ -20,6 +20,24 @@ export async function POST(req: NextRequest) {
       }, { status: 400 })
     }
     
+    // Validate message tag format
+    const validMessageTags = [
+      'CONFIRMED_EVENT_UPDATE',
+      'POST_PURCHASE_UPDATE', 
+      'ACCOUNT_UPDATE',
+      'HUMAN_AGENT',
+      'CUSTOMER_FEEDBACK',
+      'CONVERSATION_STARTER'
+    ]
+    
+    if (sendToAllLeads && !validMessageTags.includes(messageTag)) {
+      return NextResponse.json({ 
+        error: `Invalid message tag "${messageTag}". Valid tags are: ${validMessageTags.join(', ')}` 
+      }, { status: 400 })
+    }
+    
+    console.log(`Message tag validation: "${messageTag}" is ${validMessageTags.includes(messageTag) ? 'valid' : 'invalid'}`)
+    
     if (!supabaseAdmin) {
       return NextResponse.json({ error: 'Database not configured' }, { status: 500 })
     }
@@ -134,7 +152,12 @@ export async function POST(req: NextRequest) {
         console.log(`Sending message to ${conversation.participant_id}:`, JSON.stringify(messagePayload, null, 2))
         
         // Send message via Facebook Graph API
-        const response = await fetch(`https://graph.facebook.com/v19.0/me/messages?access_token=${page.access_token}`, {
+        // Use page ID instead of "me" for better compatibility
+        const apiUrl = `https://graph.facebook.com/v19.0/${page.facebook_page_id}/messages?access_token=${page.access_token}`
+        console.log(`Sending to Facebook API: ${apiUrl}`)
+        console.log(`Full message payload:`, JSON.stringify(messagePayload, null, 2))
+        
+        const response = await fetch(apiUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -142,7 +165,9 @@ export async function POST(req: NextRequest) {
           body: JSON.stringify(messagePayload)
         })
         
+        console.log(`Facebook API response status: ${response.status}`)
         const result = await response.json()
+        console.log(`Facebook API response:`, JSON.stringify(result, null, 2))
         
         if (response.ok && result.message_id) {
           // Message sent successfully
@@ -184,17 +209,23 @@ export async function POST(req: NextRequest) {
           
           console.error(`Failed to send broadcast to ${conversation.participant_id}:`, result)
           
-          // Categorize failures
+          // Categorize failures with detailed logging
+          console.log(`Error details for ${conversation.participant_id}: Code=${errorCode}, Message="${errorMessage}"`)
+          
           if (errorCode === 100) {
             invalidUsers++
             console.log(`User ${conversation.participant_id} not found, marking as invalid`)
-          } else if (errorCode === 10 && !sendToAllLeads) {
-            // Only count as outside window if NOT sending to all leads
-            outsideWindow++
-            console.log(`User ${conversation.participant_id} outside messaging window`)
-          } else if (errorCode === 10 && sendToAllLeads) {
-            // When sending to all leads, this error shouldn't happen since we use message tags
-            console.log(`User ${conversation.participant_id} failed despite message tag (sendToAllLeads mode)`)
+          } else if (errorCode === 10) {
+            if (sendToAllLeads) {
+              // When sending to all leads, this error shouldn't happen since we use message tags
+              console.log(`⚠️ CRITICAL: User ${conversation.participant_id} failed with error 10 despite message tag "${messageTag}"`)
+              console.log(`This suggests the message tag "${messageTag}" may be invalid or not properly applied`)
+            } else {
+              outsideWindow++
+              console.log(`User ${conversation.participant_id} outside messaging window`)
+            }
+          } else {
+            console.log(`Unknown error code ${errorCode} for user ${conversation.participant_id}`)
           }
           
           // Save failed broadcast record
