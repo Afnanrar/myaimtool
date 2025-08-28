@@ -46,49 +46,57 @@ export async function GET(req: NextRequest) {
         .select('*')
         .eq('page_id', page.id)
         .order('last_message_time', { ascending: false })
-        .limit(50)
+        // Remove limit to show all conversations
       
       if (cachedConversations && cachedConversations.length > 0) {
         // Return cached data immediately
         return NextResponse.json({ 
           conversations: cachedConversations,
           source: 'cache',
-          message: 'Showing cached conversations. Click refresh for latest.'
+          message: `Showing ${cachedConversations.length} cached conversations. Click refresh for latest.`
         })
       }
     }
     
-    // Fetch fresh data from Facebook
+    // Fetch fresh data from Facebook with pagination
     console.log('Fetching fresh conversations from Facebook...')
     
-    const conversationsUrl = `https://graph.facebook.com/v19.0/${page.facebook_page_id}/conversations?fields=participants,senders,updated_time,unread_count&limit=25&access_token=${page.access_token}`
+    let allConversations = []
+    let nextUrl = `https://graph.facebook.com/v19.0/${page.facebook_page_id}/conversations?fields=participants,senders,updated_time,unread_count&limit=100&access_token=${page.access_token}`
     
-    const response = await fetch(conversationsUrl)
-    const data = await response.json()
-    
-    if (data.error) {
-      console.error('Facebook API Error:', data.error)
+    // Fetch all conversations using pagination
+    while (nextUrl) {
+      console.log('Fetching conversations from:', nextUrl)
+      const response = await fetch(nextUrl)
+      const data = await response.json()
       
-      // Still return cached data if available
-      const { data: fallbackConversations } = await supabaseAdmin!
-        .from('conversations')
-        .select('*')
-        .eq('page_id', page.id)
-        .order('last_message_time', { ascending: false })
+      if (data.error) {
+        console.error('Facebook API Error:', data.error)
+        break
+      }
       
-      return NextResponse.json({ 
-        conversations: fallbackConversations || [],
-        error: `Facebook API: ${data.error.message}`,
-        source: 'cache_fallback'
-      })
+      if (data.data && data.data.length > 0) {
+        allConversations.push(...data.data)
+        console.log(`Fetched ${data.data.length} conversations, total so far: ${allConversations.length}`)
+      }
+      
+      // Check for next page
+      nextUrl = data.paging?.next || null
+      
+      // Add small delay to avoid rate limiting
+      if (nextUrl) {
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
     }
+    
+    console.log(`Total conversations fetched from Facebook: ${allConversations.length}`)
     
     // Process and save conversations
     const conversations = []
     
-    if (data.data && data.data.length > 0) {
+    if (allConversations && allConversations.length > 0) {
       // Use Promise.all for parallel processing
-      const savePromises = data.data.map(async (conv: any) => {
+      const savePromises = allConversations.map(async (conv: any) => {
         const participant = conv.participants?.data?.find((p: any) => p.id !== page.facebook_page_id)
         
         if (participant) {
@@ -120,7 +128,7 @@ export async function GET(req: NextRequest) {
       conversations,
       totalFound: conversations.length,
       source: 'facebook',
-      message: 'Fresh data loaded'
+      message: `Fresh data loaded: ${conversations.length} conversations from Facebook`
     })
     
   } catch (error) {
