@@ -135,10 +135,15 @@ export async function POST(req: NextRequest) {
           message: { text: message }
         }
         
-        // Add message tag for messages after 24h or when sending to all leads
-        if ((!isWithin24h && messageTag) || sendToAllLeads) {
+        // Smart message tag strategy for "Send to ALL leads"
+        if (sendToAllLeads) {
+          // Always add message tag when sending to all leads
           messagePayload.tag = messageTag
           console.log(`Adding message tag "${messageTag}" for user ${conversation.participant_id} (sendToAllLeads: ${sendToAllLeads})`)
+        } else if (!isWithin24h && messageTag) {
+          // Normal mode: add message tag only for users outside 24h
+          messagePayload.tag = messageTag
+          console.log(`Adding message tag "${messageTag}" for user ${conversation.participant_id} (outside 24h)`)
         }
         
         // Validate user ID format (Facebook user IDs are numeric)
@@ -151,26 +156,91 @@ export async function POST(req: NextRequest) {
         // Log the message payload being sent
         console.log(`Sending message to ${conversation.participant_id}:`, JSON.stringify(messagePayload, null, 2))
         
-        // Send message via Facebook Graph API
-        // Use page ID instead of "me" for better compatibility
-        const apiUrl = `https://graph.facebook.com/v19.0/${page.facebook_page_id}/messages?access_token=${page.access_token}`
-        console.log(`Sending to Facebook API: ${apiUrl}`)
-        console.log(`Full message payload:`, JSON.stringify(messagePayload, null, 2))
+        // Smart sending strategy with retry for "Send to ALL leads"
+        let response: any
+        let result: any
+        let success = false
         
-        const response = await fetch(apiUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(messagePayload)
-        })
+        // First attempt: Try with message tag
+        if (sendToAllLeads) {
+          console.log(`🔄 Attempt 1: Sending with message tag "${messageTag}" to ${conversation.participant_id}`)
+          
+          const apiUrl = `https://graph.facebook.com/v19.0/${page.facebook_page_id}/messages?access_token=${page.access_token}`
+          console.log(`Sending to Facebook API: ${apiUrl}`)
+          console.log(`Full message payload:`, JSON.stringify(messagePayload, null, 2))
+          
+          response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(messagePayload)
+          })
+          
+          console.log(`Facebook API response status: ${response.status}`)
+          result = await response.json()
+          console.log(`Facebook API response:`, JSON.stringify(result, null, 2))
+          
+          if (response.ok && result.message_id) {
+            success = true
+            console.log(`✅ Success with message tag on first attempt`)
+          } else if (result.error?.code === 10) {
+            // Error 10: Outside messaging window - try without message tag as fallback
+            console.log(`⚠️ First attempt failed with error 10, trying fallback without message tag...`)
+            
+            const fallbackPayload = {
+              recipient: { id: conversation.participant_id },
+              message: { text: message }
+            }
+            
+            console.log(`🔄 Attempt 2: Fallback without message tag`)
+            console.log(`Fallback payload:`, JSON.stringify(fallbackPayload, null, 2))
+            
+            const fallbackResponse = await fetch(apiUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(fallbackPayload)
+            })
+            
+            const fallbackResult = await fallbackResponse.json()
+            console.log(`Fallback response:`, JSON.stringify(fallbackResult, null, 2))
+            
+            if (fallbackResponse.ok && fallbackResult.message_id) {
+              success = true
+              response = fallbackResponse
+              result = fallbackResult
+              console.log(`✅ Success with fallback (no message tag)`)
+            } else {
+              console.log(`❌ Fallback also failed:`, fallbackResult)
+            }
+          }
+        } else {
+          // Normal mode: Single attempt
+          const apiUrl = `https://graph.facebook.com/v19.0/${page.facebook_page_id}/messages?access_token=${page.access_token}`
+          console.log(`Sending to Facebook API: ${apiUrl}`)
+          console.log(`Full message payload:`, JSON.stringify(messagePayload, null, 2))
+          
+          response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(messagePayload)
+          })
+          
+          console.log(`Facebook API response status: ${response.status}`)
+          result = await response.json()
+          console.log(`Facebook API response:`, JSON.stringify(result, null, 2))
+          
+          if (response.ok && result.message_id) {
+            success = true
+          }
+        }
         
-        console.log(`Facebook API response status: ${response.status}`)
-        const result = await response.json()
-        console.log(`Facebook API response:`, JSON.stringify(result, null, 2))
-        
-        if (response.ok && result.message_id) {
-          // Message sent successfully
+        if (success) {
+          // Message sent successfully (either with message tag or fallback)
           if (sendToAllLeads) {
             // When sending to all leads, categorize by time but all get message tag
             if (isWithin24h) {
@@ -201,7 +271,7 @@ export async function POST(req: NextRequest) {
             })
           
           console.log(`Broadcast sent to ${conversation.participant_id}: ${result.message_id}`)
-        } else {
+        } else if (!success) {
           // Message failed - categorize the error
           failed++
           const errorMessage = result.error?.message || 'Unknown error'
