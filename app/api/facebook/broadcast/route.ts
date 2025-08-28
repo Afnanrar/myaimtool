@@ -5,6 +5,8 @@ export async function POST(req: NextRequest) {
   try {
     const { pageId, message, messageTag, useSpintax, audience, sendToAllLeads } = await req.json()
     
+    console.log(`Broadcast request: sendToAllLeads=${sendToAllLeads}, messageTag=${messageTag}`)
+    
     if (!pageId || !message) {
       return NextResponse.json({ 
         error: 'Missing required fields: pageId and message are required' 
@@ -89,6 +91,12 @@ export async function POST(req: NextRequest) {
       }
     })
     
+    // If sending to all leads, reset counters since everyone is eligible
+    if (sendToAllLeads) {
+      outsideWindow = 0 // Reset since all leads are eligible
+      console.log(`Send to ALL leads enabled: All ${conversations.length} leads are eligible`)
+    }
+    
     console.log(`Broadcast eligibility: ${conversations.length} total, ${eligibleConversations.length} eligible, ${invalidUsers} invalid, ${outsideWindow} outside window`)
     
     if (eligibleConversations.length === 0) {
@@ -112,6 +120,7 @@ export async function POST(req: NextRequest) {
         // Add message tag for messages after 24h or when sending to all leads
         if ((!isWithin24h && messageTag) || sendToAllLeads) {
           messagePayload.tag = messageTag
+          console.log(`Adding message tag "${messageTag}" for user ${conversation.participant_id} (sendToAllLeads: ${sendToAllLeads})`)
         }
         
         // Validate user ID format (Facebook user IDs are numeric)
@@ -120,6 +129,9 @@ export async function POST(req: NextRequest) {
           invalidUsers++
           continue
         }
+        
+        // Log the message payload being sent
+        console.log(`Sending message to ${conversation.participant_id}:`, JSON.stringify(messagePayload, null, 2))
         
         // Send message via Facebook Graph API
         const response = await fetch(`https://graph.facebook.com/v19.0/me/messages?access_token=${page.access_token}`, {
@@ -176,9 +188,13 @@ export async function POST(req: NextRequest) {
           if (errorCode === 100) {
             invalidUsers++
             console.log(`User ${conversation.participant_id} not found, marking as invalid`)
-          } else if (errorCode === 10) {
+          } else if (errorCode === 10 && !sendToAllLeads) {
+            // Only count as outside window if NOT sending to all leads
             outsideWindow++
             console.log(`User ${conversation.participant_id} outside messaging window`)
+          } else if (errorCode === 10 && sendToAllLeads) {
+            // When sending to all leads, this error shouldn't happen since we use message tags
+            console.log(`User ${conversation.participant_id} failed despite message tag (sendToAllLeads mode)`)
           }
           
           // Save failed broadcast record
