@@ -69,10 +69,10 @@ export class RateLimiterWorkerSupabase {
     this.isRunning = false
     
     // Stop all page workers
-    for (const [pageId, worker] of this.workers) {
+    this.workers.forEach((worker, pageId) => {
       console.log(`Stopping worker for page ${pageId}`)
       // Workers will naturally stop when the main loop ends
-    }
+    })
     
     this.workers.clear()
     console.log('Rate Limiter Worker stopped')
@@ -317,7 +317,7 @@ export class RateLimiterWorkerSupabase {
   // Collect and store metrics in database
   private async collectAndStoreMetrics(): Promise<void> {
     try {
-      for (const [pageId, worker] of this.workers) {
+      this.workers.forEach(async (worker, pageId) => {
         const workerMetrics = worker.getMetrics()
         
         const { error } = await supabaseAdmin!
@@ -338,7 +338,7 @@ export class RateLimiterWorkerSupabase {
         if (error) {
           console.error(`Error storing metrics for page ${pageId}:`, error)
         }
-      }
+      })
     } catch (error) {
       console.error('Error collecting metrics:', error)
     }
@@ -355,7 +355,7 @@ export class RateLimiterWorkerSupabase {
   private async checkWorkerHealth(): Promise<void> {
     try {
       // Check if workers are responsive
-      for (const [pageId, worker] of this.workers) {
+      this.workers.forEach((worker, pageId) => {
         const metrics = worker.getMetrics()
         
         // Log health status
@@ -364,7 +364,7 @@ export class RateLimiterWorkerSupabase {
           tokens_remaining: metrics.tokens_remaining,
           current_backoff: metrics.current_backoff_sec
         })
-      }
+      })
 
       // Store health event
       await supabaseAdmin!

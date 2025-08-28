@@ -7,6 +7,9 @@ export interface RateLimiterConfig {
   recipient_min_gap_sec: number
   backoff_max_sec: number
   page_id: string
+  id?: string
+  enabled?: boolean
+  updated_at?: Date
 }
 
 export interface MessageTask {
@@ -172,7 +175,7 @@ export class FacebookMessengerRateLimiterSupabase {
     const backoff = this.backoffState.get(this.config.page_id)
     if (!backoff) return false
     
-    return Date.now() < backoff.getTime()
+    return Date.now() < backoff.backoffUntil.getTime()
   }
 
   // Enqueue message with rate limiting
@@ -287,7 +290,7 @@ export class FacebookMessengerRateLimiterSupabase {
   }
 
   // Process individual message with retry logic
-  private async processMessage(task: any): Promise<void> {
+  async processMessage(task: any): Promise<void> {
     try {
       // Check 24-hour policy and message tag validation
       const policyCheck = await this.validateMessagePolicy(task)
