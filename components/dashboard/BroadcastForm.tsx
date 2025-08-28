@@ -35,8 +35,17 @@ export default function BroadcastForm({ pageId }: BroadcastFormProps) {
     }
     
     if (sendToAllLeads && !messageTag.trim()) {
-      alert('Please select a message tag when sending to all leads')
+      alert('Please select a message tag when sending to all leads. Message tags are required to reach users outside the 24-hour messaging window.')
       return
+    }
+    
+    // Validate message tag format
+    if (sendToAllLeads && messageTag) {
+      const validTags = ['CONFIRMED_EVENT_UPDATE', 'POST_PURCHASE_UPDATE', 'ACCOUNT_UPDATE', 'HUMAN_AGENT', 'CUSTOMER_FEEDBACK', 'CONVERSATION_STARTER']
+      if (!validTags.includes(messageTag)) {
+        alert(`Invalid message tag: ${messageTag}. Please select a valid tag from the dropdown.`)
+        return
+      }
     }
     
     setSending(true)
@@ -119,25 +128,56 @@ export default function BroadcastForm({ pageId }: BroadcastFormProps) {
         {sendToAllLeads && (
           <div>
             <label className="block text-sm font-medium mb-2">
-              Message Tag (Required for 24h+ messaging)
+              Message Tag <span className="text-red-500">*</span>
+              <span className="text-sm font-normal text-gray-500 ml-2">(Required for 24h+ messaging)</span>
             </label>
             <select
               value={messageTag}
               onChange={(e) => setMessageTag(e.target.value)}
-              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                sendToAllLeads && !messageTag ? 'border-red-300 bg-red-50' : 'border-gray-300'
+              }`}
               required={sendToAllLeads}
             >
               <option value="">Select a message tag...</option>
-              <option value="CONFIRMED_EVENT_UPDATE">Confirmed Event Update</option>
-              <option value="POST_PURCHASE_UPDATE">Post Purchase Update</option>
-              <option value="ACCOUNT_UPDATE">Account Update</option>
-              <option value="HUMAN_AGENT">Human Agent</option>
-              <option value="CUSTOMER_FEEDBACK">Customer Feedback</option>
-              <option value="CONVERSATION_STARTER">Conversation Starter</option>
+              <option value="CONFIRMED_EVENT_UPDATE">🎯 Confirmed Event Update - Event confirmations, schedule changes</option>
+              <option value="POST_PURCHASE_UPDATE">🛒 Post Purchase Update - Order updates, shipping info</option>
+              <option value="ACCOUNT_UPDATE">🔐 Account Update - Security alerts, account changes</option>
+              <option value="HUMAN_AGENT">👨‍💼 Human Agent - Customer service, support requests</option>
+              <option value="CUSTOMER_FEEDBACK">📝 Customer Feedback - Surveys, feedback requests</option>
+              <option value="CONVERSATION_STARTER">💬 Conversation Starter - Re-engagement, promotions</option>
             </select>
-            <p className="text-sm text-gray-600 mt-1">
-              Message tags allow you to reach users outside the 24-hour window for specific business purposes.
-            </p>
+            
+            {/* Help text */}
+            <div className="mt-2 space-y-2">
+              <p className="text-sm text-gray-600">
+                <strong>Why message tags?</strong> Facebook requires specific business purposes to message users outside the 24-hour window.
+              </p>
+              
+              {/* Selected tag details */}
+              {messageTag && (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-sm font-medium text-blue-800 mb-1">
+                    Selected: {messageTag}
+                  </p>
+                  <p className="text-xs text-blue-700">
+                    {messageTag === 'CONFIRMED_EVENT_UPDATE' && 'Use for event confirmations, schedule changes, venue updates'}
+                    {messageTag === 'POST_PURCHASE_UPDATE' && 'Use for order confirmations, shipping updates, delivery tracking'}
+                    {messageTag === 'ACCOUNT_UPDATE' && 'Use for security alerts, password changes, account modifications'}
+                    {messageTag === 'HUMAN_AGENT' && 'Use for customer service, support requests, human assistance'}
+                    {messageTag === 'CUSTOMER_FEEDBACK' && 'Use for surveys, feedback requests, customer satisfaction'}
+                    {messageTag === 'CONVERSATION_STARTER' && 'Use for re-engagement, promotions, business updates'}
+                  </p>
+                </div>
+              )}
+              
+              {/* Validation error */}
+              {sendToAllLeads && !messageTag && (
+                <p className="text-sm text-red-600">
+                  ⚠️ Please select a message tag to send to all leads
+                </p>
+              )}
+            </div>
           </div>
         )}
         
@@ -173,11 +213,45 @@ export default function BroadcastForm({ pageId }: BroadcastFormProps) {
           </div>
         )}
         
+        {/* Status Indicator */}
+        {sendToAllLeads && (
+          <div className={`p-3 rounded-lg border ${
+            messageTag ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'
+          }`}>
+            <div className="flex items-center gap-2">
+              {messageTag ? (
+                <>
+                  <div className="w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
+                    <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <span className="text-sm font-medium text-green-800">
+                    Ready to send to ALL leads with message tag: {messageTag}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <div className="w-4 h-4 bg-yellow-500 rounded-full flex items-center justify-center">
+                    <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <span className="text-sm font-medium text-yellow-800">
+                    Please select a message tag to send to ALL leads
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="flex justify-end space-x-3">
           <button
             onClick={() => {
               setMessage('')
               setPreview('')
+              setMessageTag('')
             }}
             className="px-6 py-2 border rounded-lg hover:bg-gray-50"
             disabled={sending}
@@ -186,8 +260,12 @@ export default function BroadcastForm({ pageId }: BroadcastFormProps) {
           </button>
           <button
             onClick={sendBroadcast}
-            disabled={sending || !message.trim()}
-            className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
+            disabled={sending || !message.trim() || (sendToAllLeads && !messageTag)}
+            className={`px-6 py-2 rounded-lg font-medium transition-colors ${
+              sending || !message.trim() || (sendToAllLeads && !messageTag)
+                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                : 'bg-blue-500 text-white hover:bg-blue-600'
+            }`}
           >
             {sending ? 'Sending...' : 'Send Broadcast'}
           </button>
